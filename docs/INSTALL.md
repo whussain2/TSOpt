@@ -10,8 +10,8 @@ package for your system.
 
   | Your system | File | Status |
   |:--|:--|:--|
-  | macOS on **Apple silicon** (M1–M4), R 4.5 | `TSOpt_0.5.0.tgz` | ✅ available |
-  | macOS on Intel | (to be announced) | in preparation |
+  | macOS on **Apple silicon** (M1–M4), R 4.5 | `TSOpt_0.5.0_macos-arm64.tgz` | ✅ available |
+  | macOS on Intel | `TSOpt_0.5.0_macos-x86_64.tgz` | in preparation |
   | Windows | `TSOpt_0.5.0.zip` | in preparation |
   | Linux (x86-64) | `TSOpt_0.5.0_R_x86_64-pc-linux-gnu.tar.gz` | in preparation |
 
@@ -31,7 +31,7 @@ Open R or RStudio and run:
 install.packages(c("data.table", "ggplot2", "scales", "jsonlite", "patchwork"))
 
 # TSOpt itself: the path to the file you downloaded
-install.packages("~/Downloads/TSOpt_0.5.0.tgz", repos = NULL)    # macOS, Apple silicon (available now)
+install.packages("~/Downloads/TSOpt_0.5.0_macos-arm64.tgz", repos = NULL)    # macOS, Apple silicon (available now)
 
 # when the other builds are released:
 # install.packages("C:/Users/you/Downloads/TSOpt_0.5.0.zip", repos = NULL)                # Windows
@@ -91,7 +91,7 @@ TSOpt works without these, and uses them when present:
 | `the licence expired on ...` | Ask for a new key (keys are valid for 12 months) |
 | `the key is damaged` | Copy the whole key, from `TSO1.` to the end, in one piece |
 | `package ... was built under R version ...` | A warning only; if the package does not load, ask for a file for your R version |
-| Installation fails on macOS with "cannot open file" | Use the full path, e.g. `"~/Downloads/TSOpt_0.5.0.tgz"` |
+| Installation fails on macOS with "cannot open file" | Use the full path, e.g. `"~/Downloads/TSOpt_0.5.0_macos-arm64.tgz"` |
 
 Still stuck? [Open an issue](../../../issues/new/choose) (don't include your key) or email
 [waseemhussain@plantnura.com](mailto:waseemhussain@plantnura.com).

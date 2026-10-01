@@ -7,17 +7,17 @@ Scripts and raw results are in [`benchmark/`](../benchmark/).
 
 ## Prediction accuracy of training sets
 
-The head-to-head rows come from the run with TSOpt 0.5.0 (30 complete scenarios on five
-panels; the Spruce run is incomplete, see [benchmark/README.md](../benchmark/README.md)).
+The head-to-head rows come from the run with TSOpt 0.5.0 (33 scenarios on six panels, see
+[benchmark/README.md](../benchmark/README.md)).
 
 | Claim | Data | Effect (SE) | Runs | Source |
 |---|---|---|---|---|
-| The default (robust CDmean) predicts better than random | Real: 5 public panels (maize, 2 rice, sorghum, switchgrass), all traits | PA +0.072 ± 0.013 over random; beats random in 90% of scenarios | 30 scenarios | [benchmark/README.md](../benchmark/README.md) |
-| ... at least as well as STPGA, about 4,000 times faster | same | +0.019 ± 0.011; wins 57% (sign test n.s.); 0.03 s vs 118 s | 30 pairs | same |
-| ... at least as well as TSDFGS r-score, about 1,300 times faster | same | +0.024 ± 0.009; wins 63% (n.s.); 0.03 s vs 40 s | 30 pairs | same |
-| ... and slightly better than a TrainSel-style GA + SA (our implementation, not TrainSel's code) | same | +0.005 ± 0.006; wins 70% | 30 pairs | same |
-| Hedging over heritability beats one assumed h2 | same | +0.010 ± 0.006 over h2 = 0.5; wins 73%, sign test p = 0.02 | 30 pairs | same; probe of fixed h2 0.1-0.8 (earlier version) in `results/h2probe_*.csv` |
-| "Most related to the target" is harmful | same | PA -0.119 vs random; beats random 27% | 30 scenarios | same |
+| The default (robust CDmean) predicts better than random | Real: 6 public panels (maize, 2 rice, sorghum, switchgrass, spruce), all traits | PA +0.066 ± 0.012 over random; beats random in 88% of scenarios | 33 scenarios | [benchmark/README.md](../benchmark/README.md) |
+| ... at least as well as STPGA, about 4,000 times faster | same | +0.020 ± 0.010; wins 58% (sign test n.s.); 0.03 s vs 120 s | 33 pairs | same |
+| ... at least as well as TSDFGS r-score, about 1,300 times faster | same | +0.024 ± 0.008; wins 64% (n.s.); 0.03 s vs 40 s | 33 pairs | same |
+| ... and slightly better than a TrainSel-style GA + SA (our implementation, not TrainSel's code) | same | +0.006 ± 0.005; wins 70% | 33 pairs | same |
+| Hedging over heritability beats one assumed h2 | same | +0.009 ± 0.006 over h2 = 0.5; wins 70%, sign test p = 0.04 | 33 pairs | same; probe of fixed h2 0.1-0.8 (earlier version) in `results/h2probe_*.csv` |
+| "Most related to the target" is harmful | same | PA -0.114 vs random; beats random 27% | 33 scenarios | same |
 | Forward in time: choosing this cycle's plots | Simulated programme histories (40 x 6 cycles, h2 0.3 and 0.6) | PA +0.009 over random (SE 0.003, t = 3.1); wins 61% | 200 cycle tests | `benchmark/forward_benchmark.R` |
 | Forward in time: choosing the training set from history | same | PA +0.091 over random (SE 0.007, t = 13.4); wins 83% | 200 cycle tests | same |
 | Forward in time: most related is harmful | same | within cycle PA -0.013 (t = -4.1) | 200 cycle tests | same |
@@ -49,8 +49,6 @@ see [REPRODUCIBILITY.md](REPRODUCIBILITY.md)) and by the base-R scripts in the p
 
 ## What is not yet shown
 
-* **The full Spruce panel with TSOpt 0.5.0.** Its random draws, TSDFGS r-score and baselines
-  did not finish; it is excluded from the comparisons above until rerun.
 * **Forward validation on real multi-year data.** The forward results use simulated
   programme histories. `tso_backtest()` runs the same test on a programme's own data;
   results from real programmes are the next step.

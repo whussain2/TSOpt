@@ -21,7 +21,7 @@ says otherwise.
 
 | Default | Evidence |
 |---|---|
-| Robust CDmean (h2 = 0.2, 0.5, 0.8), greedy rank-one search | 5 public panels, 30 scenarios, TSOpt 0.5.0 ([benchmark/README.md](../benchmark/README.md)) |
+| Robust CDmean (h2 = 0.2, 0.5, 0.8), greedy rank-one search | 6 public panels, 33 scenarios, TSOpt 0.5.0 ([benchmark/README.md](../benchmark/README.md)) |
 | Additive kernel (kernels are opt-in) | 720 paired runs with 30-50% epistasis ([benchmark/KERNELS.md](../benchmark/KERNELS.md)) |
 | SNP kernel, CDmean (haplotypes are opt-in) | 4 real panels, 120 paired runs ([benchmark/HAPLOTYPES.md](../benchmark/HAPLOTYPES.md)) |
 | Stratification when the panel has discrete groups | [benchmark/README.md](../benchmark/README.md) |

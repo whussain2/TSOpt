@@ -25,9 +25,9 @@ in the same way for every method. Each script states, at its top, the data it ne
 * **Raw results** for every run are in [`benchmark/results/`](../benchmark/results/), so the summaries and
   figures can be checked without rerunning anything.
 * **Version.** The head-to-head benchmark was run with TSOpt 0.5.0, the released version. The method
-  labelled "TSOpt default (v0.5.0)" is the package's default call, with no options changed. On Spruce that
-  run is incomplete, so the published comparisons use the 30 complete scenarios on five panels
-  ([details](../benchmark/README.md)). The other benchmarks name the version they were run with.
+  labelled "TSOpt default (v0.5.0)" is the package's default call, with no options changed. All 33 scenarios on
+  the six panels are complete ([details](../benchmark/README.md)). The other benchmarks name the version
+  they were run with.
 
 ## Source code for verification
 
@@ -40,6 +40,11 @@ availability.
 * **Access is given under a short written agreement** that permits review and verification, but not
   redistribution.
 * **Reviewers** of a manuscript about TSOpt also receive a licence key at once.
+* **What the installed package already shows.** As with any R package, the R-level code is
+  installed in R's byte-compiled form and can be read with `TSOpt:::name` (for example
+  `TSOpt:::.gblup`, the GBLUP fit the benchmark scores every method with). What ships as a
+  compiled binary only is the C engine (the rank-one updates) and the licence check. The source
+  request above covers the C sources, the test suite and the build.
 
 ## What the published results use
 

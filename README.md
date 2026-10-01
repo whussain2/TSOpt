@@ -96,12 +96,12 @@ flowchart LR
 | Step | What to do |
 |:--:|:--|
 | **1** | **Request your free key.** Email **[waseemhussain@plantnura.com](mailto:waseemhussain@plantnura.com?subject=TSOpt%20licence%20key%20request&body=Name%3A%0AOrganisation%3A%0ACountry%3A%0AIntended%20use%3A%0A%0AI%20accept%20the%20TSOpt%20licence%20terms.)** with your name, organisation, country and intended use. You receive a personal key, usually within two working days. [How keys work →](docs/LICENCE_KEY.md) |
-| **2** | **Install the package** from the **[Releases](../../releases)** page (no compiler needed). Available now for **macOS on Apple silicon (M1–M4) with R 4.5** (file `TSOpt_0.5.0.tgz`); Windows, Intel Mac and Linux builds are being prepared. [Installation guide →](docs/INSTALL.md) |
+| **2** | **Install the package** from the **[Releases](../../releases)** page (no compiler needed). Available now for **macOS on Apple silicon (M1–M4) with R 4.5** (file `TSOpt_0.5.0_macos-arm64.tgz`); Windows, Intel Mac and Linux builds are being prepared. [Installation guide →](docs/INSTALL.md) |
 | **3** | **Activate the key** once: `library(TSOpt); tso_licence("TSO1....")`. It is saved on your computer. |
 
 ```r
 install.packages(c("data.table", "ggplot2", "scales", "jsonlite", "patchwork"))   # once
-install.packages("~/Downloads/TSOpt_0.5.0.tgz", repos = NULL)   # the file from Releases (macOS, Apple silicon)
+install.packages("~/Downloads/TSOpt_0.5.0_macos-arm64.tgz", repos = NULL)   # the file from Releases (macOS, Apple silicon)
 
 library(TSOpt)
 tso_licence("TSO1....")                              # your key, once
@@ -203,9 +203,9 @@ flowchart TD
 
 ## 📈 Does it work?
 
-On **five public panels** (maize, two rice panels, sorghum and switchgrass, with real phenotypes, 30 scenarios;
-TSOpt 0.5.0), TSOpt's default improved predictive ability over random sampling by **+0.072**, winning **90%** of
-scenarios. It was at least as accurate as STPGA and TSDFGS (+0.019 and +0.024 on average) and about
+On **six public panels** (maize, two rice panels, sorghum, switchgrass and white spruce, with real phenotypes,
+33 scenarios; TSOpt 0.5.0), TSOpt's default improved predictive ability over random sampling by **+0.066**, winning
+**88%** of scenarios. It was at least as accurate as STPGA and TSDFGS (+0.020 and +0.024 on average) and about
 **1,000 to 4,000 times faster** (0.03 s instead of 40 to 120 s). Choosing the lines "most related to the targets",
 a common rule of thumb, *lowered* accuracy.
 

@@ -7,8 +7,8 @@
 **Training-set design for genomic prediction, in every crop and every breeding system.**
 
 [![Version](https://img.shields.io/badge/version-0.5.0-6A3FA0?style=for-the-badge)](CHANGELOG.md)
-[![R](https://img.shields.io/badge/R-4.5-276DC3?style=for-the-badge&logo=r&logoColor=white)](docs/INSTALL.md)
-[![Platforms](https://img.shields.io/badge/available-macOS%20(Apple%20silicon)-0F9D8E?style=for-the-badge)](docs/INSTALL.md)
+[![R](https://img.shields.io/badge/R-%E2%89%A5%204.5-276DC3?style=for-the-badge&logo=r&logoColor=white)](docs/INSTALL.md)
+[![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-0F9D8E?style=for-the-badge)](docs/INSTALL.md)
 [![Licence](https://img.shields.io/badge/licence-free%20for%20everyone-D65F0E?style=for-the-badge)](LICENSE)
 
 **[Get TSOpt](#-get-tsopt-in-three-steps)** ·
@@ -96,12 +96,12 @@ flowchart LR
 | Step | What to do |
 |:--:|:--|
 | **1** | **Request your free key.** Email **[waseemhussain@plantnura.com](mailto:waseemhussain@plantnura.com?subject=TSOpt%20licence%20key%20request&body=Name%3A%0AOrganisation%3A%0ACountry%3A%0AIntended%20use%3A%0A%0AI%20accept%20the%20TSOpt%20licence%20terms.)** with your name, organisation, country and intended use. You receive a personal key, usually within two working days. [How keys work →](docs/LICENCE_KEY.md) |
-| **2** | **Install the package** from the **[Releases](../../releases)** page (no compiler needed). Available now for **macOS on Apple silicon (M1–M4) with R 4.5** (file `TSOpt_0.5.0_macos-arm64.tgz`); Windows, Intel Mac and Linux builds are being prepared. [Installation guide →](docs/INSTALL.md) |
+| **2** | **Install the package** for your system from the **[Releases](../../releases)** page (no compiler needed): Windows, macOS (Apple silicon or Intel) and Linux. [Installation guide →](docs/INSTALL.md) |
 | **3** | **Activate the key** once: `library(TSOpt); tso_licence("TSO1....")`. It is saved on your computer. |
 
 ```r
 install.packages(c("data.table", "ggplot2", "scales", "jsonlite", "patchwork"))   # once
-install.packages("~/Downloads/TSOpt_0.5.0_macos-arm64.tgz", repos = NULL)   # the file from Releases (macOS, Apple silicon)
+install.packages("~/Downloads/TSOpt_0.5.0_macos-arm64.tgz", repos = NULL)   # the file from Releases: .zip Windows, .tgz macOS, .tar.gz Linux
 
 library(TSOpt)
 tso_licence("TSO1....")                              # your key, once

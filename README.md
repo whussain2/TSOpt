@@ -7,8 +7,8 @@
 **Training-set design for genomic prediction, in every crop and every breeding system.**
 
 [![Version](https://img.shields.io/badge/version-0.5.0-6A3FA0?style=for-the-badge)](CHANGELOG.md)
-[![R](https://img.shields.io/badge/R-%E2%89%A5%204.1-276DC3?style=for-the-badge&logo=r&logoColor=white)](docs/INSTALL.md)
-[![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-0F9D8E?style=for-the-badge)](docs/INSTALL.md)
+[![R](https://img.shields.io/badge/R-4.5-276DC3?style=for-the-badge&logo=r&logoColor=white)](docs/INSTALL.md)
+[![Platforms](https://img.shields.io/badge/available-macOS%20(Apple%20silicon)-0F9D8E?style=for-the-badge)](docs/INSTALL.md)
 [![Licence](https://img.shields.io/badge/licence-free%20for%20everyone-D65F0E?style=for-the-badge)](LICENSE)
 
 **[Get TSOpt](#-get-tsopt-in-three-steps)** ·
@@ -39,7 +39,7 @@ the prediction error variance. **A design takes milliseconds**, not minutes.
 
 ### 🛡️ Robust by default
 Heritability is never known in advance, so the default design is averaged over it, or over **REML estimates
-from your own trials**. It won a head-to-head benchmark on six public panels.
+from your own trials**. In a head-to-head benchmark on public panels it was as accurate as or better than other packages, and far faster.
 
 </td>
 <td width="33%" valign="top">
@@ -96,12 +96,12 @@ flowchart LR
 | Step | What to do |
 |:--:|:--|
 | **1** | **Request your free key.** Email **[waseemhussain@plantnura.com](mailto:waseemhussain@plantnura.com?subject=TSOpt%20licence%20key%20request&body=Name%3A%0AOrganisation%3A%0ACountry%3A%0AIntended%20use%3A%0A%0AI%20accept%20the%20TSOpt%20licence%20terms.)** with your name, organisation, country and intended use. You receive a personal key, usually within two working days. [How keys work →](docs/LICENCE_KEY.md) |
-| **2** | **Install the package** for your system from the **[Releases](../../releases)** page (no compiler needed). [Installation guide →](docs/INSTALL.md) |
+| **2** | **Install the package** from the **[Releases](../../releases)** page (no compiler needed). Available now for **macOS on Apple silicon (M1–M4) with R 4.5** (file `TSOpt_0.5.0.tgz`); Windows, Intel Mac and Linux builds are being prepared. [Installation guide →](docs/INSTALL.md) |
 | **3** | **Activate the key** once: `library(TSOpt); tso_licence("TSO1....")`. It is saved on your computer. |
 
 ```r
 install.packages(c("data.table", "ggplot2", "scales", "jsonlite", "patchwork"))   # once
-install.packages("TSOpt_0.5.0.zip", repos = NULL)    # the file from Releases: .zip Windows, .tgz macOS, .tar.gz Linux
+install.packages("~/Downloads/TSOpt_0.5.0.tgz", repos = NULL)   # the file from Releases (macOS, Apple silicon)
 
 library(TSOpt)
 tso_licence("TSO1....")                              # your key, once
@@ -203,10 +203,11 @@ flowchart TD
 
 ## 📈 Does it work?
 
-On **six public panels** (maize, two rice panels, sorghum, switchgrass and white spruce, with real phenotypes,
-33 scenarios), TSOpt's default improved predictive ability over random sampling by **+0.069**, winning **91%**
-of scenarios. It beat STPGA and TSDFGS by **+0.025** each, in milliseconds instead of minutes. Choosing the lines
-"most related to the targets", a common rule of thumb, *lowered* accuracy.
+On **five public panels** (maize, two rice panels, sorghum and switchgrass, with real phenotypes, 30 scenarios;
+TSOpt 0.5.0), TSOpt's default improved predictive ability over random sampling by **+0.072**, winning **90%** of
+scenarios. It was at least as accurate as STPGA and TSDFGS (+0.019 and +0.024 on average) and about
+**1,000 to 4,000 times faster** (0.03 s instead of 40 to 120 s). Choosing the lines "most related to the targets",
+a common rule of thumb, *lowered* accuracy.
 
 <div align="center">
 <img src="assets/benchmark_gain.png" alt="Benchmark: gain in predictive ability over random" width="48%"/>
@@ -214,8 +215,8 @@ of scenarios. It beat STPGA and TSDFGS by **+0.025** each, in milliseconds inste
 </div>
 
 We also report what does **not** help. Designing under epistatic, haplotype or omics models did not change which
-lines were worth phenotyping, so the additive, robust default stays. The full benchmark is in
-[part 13 of the tutorial](docs/tutorial/TSOpt_Tutorial.pdf).
+lines were worth phenotyping, so the additive, robust default stays. The full benchmark, with every raw result,
+is in [benchmark/](benchmark/README.md), and every claim with its effect size is in [EVIDENCE.md](docs/EVIDENCE.md).
 
 ---
 
@@ -227,6 +228,7 @@ lines were worth phenotyping, so the additive, robust default stays. The full be
 | **Privacy** | TSOpt runs entirely on your computer. It sends **no data, no telemetry and no usage information** anywhere; the key is checked offline. |
 | **Security** | To report a vulnerability, follow [SECURITY.md](SECURITY.md) (privately, not in a public issue). |
 | **Third-party software** | Listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). |
+| **Reproducibility** | Benchmark scripts and raw results are public. The source code is available to qualified researchers and reviewers on request. [How →](docs/REPRODUCIBILITY.md) |
 
 Never post your licence key in an issue or anywhere public. If it leaks, email us and we will issue a new one.
 

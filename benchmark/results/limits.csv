@@ -1,0 +1,7 @@
+"case","seconds","peak_mb"
+"dense 1,000 lines",1.329,516.9375
+"dense 2,000 lines",6.769,1046.546875
+"dense 5,000 lines",52.48,2800.6875
+"implicit 1,000 lines x 15 sites",152.763,2710.859375
+"implicit 2,000 lines x 5 sites x 2 traits",403.322,5641.65625
+"tso_design_large 20,000 lines",28.414,5824.109375

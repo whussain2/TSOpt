@@ -1,6 +1,6 @@
 # Installing TSOpt
 
-TSOpt is an R package. You need **R 4.1 or later** ([download R](https://cran.r-project.org)) and, preferably,
+TSOpt is an R package. You need **R 4.5** (the current release; the ready-made packages are built for it) ([download R](https://cran.r-project.org)) and, preferably,
 [RStudio](https://posit.co/download/rstudio-desktop/). No compiler is needed: you install a ready-made binary
 package for your system.
 
@@ -8,11 +8,14 @@ package for your system.
 
 * **The package:** the file for your system, from the **[Releases](../../../releases)** page of this repository.
 
-  | Your system | File |
-  |:--|:--|
-  | Windows | `TSOpt_0.5.0.zip` |
-  | macOS (Apple silicon or Intel) | `TSOpt_0.5.0.tgz` |
-  | Linux (x86-64) | `TSOpt_0.5.0_R_x86_64-pc-linux-gnu.tar.gz` |
+  | Your system | File | Status |
+  |:--|:--|:--|
+  | macOS on **Apple silicon** (M1–M4), R 4.5 | `TSOpt_0.5.0.tgz` | ✅ available |
+  | macOS on Intel | (to be announced) | in preparation |
+  | Windows | `TSOpt_0.5.0.zip` | in preparation |
+  | Linux (x86-64) | `TSOpt_0.5.0_R_x86_64-pc-linux-gnu.tar.gz` | in preparation |
+
+  Need one of the builds in preparation now? Email us and we will tell you when it is ready.
 
 * **Your licence key:** request it by email ([how keys work](LICENCE_KEY.md)).
 
@@ -28,9 +31,11 @@ Open R or RStudio and run:
 install.packages(c("data.table", "ggplot2", "scales", "jsonlite", "patchwork"))
 
 # TSOpt itself: the path to the file you downloaded
-install.packages("C:/Users/you/Downloads/TSOpt_0.5.0.zip", repos = NULL)          # Windows
-install.packages("~/Downloads/TSOpt_0.5.0.tgz", repos = NULL)                       # macOS
-install.packages("~/Downloads/TSOpt_0.5.0_R_x86_64-pc-linux-gnu.tar.gz", repos = NULL)  # Linux
+install.packages("~/Downloads/TSOpt_0.5.0.tgz", repos = NULL)    # macOS, Apple silicon (available now)
+
+# when the other builds are released:
+# install.packages("C:/Users/you/Downloads/TSOpt_0.5.0.zip", repos = NULL)                # Windows
+# install.packages("~/Downloads/TSOpt_0.5.0_R_x86_64-pc-linux-gnu.tar.gz", repos = NULL)  # Linux
 ```
 
 **RStudio alternative:** Tools › Install Packages › *Install from:* **Package Archive File** › choose the file.

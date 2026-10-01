@@ -1,0 +1,5 @@
+"panel","lines","markers","blocks","median_markers","mean_markers","median_haplotypes","kind"
+"Maize",391,19040,16329,1,1.16602363892461,2,"homozygous"
+"Rice",327,11092,4062,1,2.73067454455933,2,"homozygous"
+"Sorghum",451,19982,14718,1,1.35765729039272,3,"unphased"
+"Switchgrass",514,14136,13579,1,1.04101922085573,3,"unphased"

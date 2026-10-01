@@ -1,0 +1,32 @@
+TSOpt: third-party components
+
+TSOpt is licensed under the TSOpt Free Licence (file LICENSE). It uses the
+following software of other authors, each under its own licence, which
+governs that component. Nothing in the TSOpt licence limits your rights under
+these licences.
+
+Compiled into TSOpt
+-------------------
+* Ed25519 signature verification and SHA-512 (src/tso_ed25519.c), adapted
+  from TweetNaCl by D. J. Bernstein, B. van Gastel, W. Janssen, T. Lange,
+  P. Schwabe and S. Smetsers. Public domain. https://tweetnacl.cr.yp.to
+* R's C interface and BLAS headers (R Core Team). LGPL (>= 2.1).
+
+R packages used at run time (installed separately, not included in TSOpt)
+-------------------------------------------------------------------------
+Required:
+* data.table: MPL-2.0
+* ggplot2: MIT
+* scales: MIT
+* stats, utils, grDevices, tools, parallel (part of R): GPL-2 | GPL-3
+
+Optional (used when installed):
+* shiny: MIT                 * jsonlite: MIT            * curl: MIT
+* patchwork: MIT             * ragg: MIT                * readxl: MIT
+* testthat: MIT              * xfun: MIT                * rmarkdown: GPL-3
+* openssl, writexl (tests only): MIT
+* knitr: GPL                 * cluster: GPL (>= 2)      * ggrepel: GPL-3
+* svglite: GPL (>= 2)        * R.utils: LGPL (>= 2.1)
+
+R itself is licensed under the GPL (version 2 or 3). TSOpt runs in R but does
+not include any part of R or of the packages above.

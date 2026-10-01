@@ -1,0 +1,176 @@
+TSOpt FREE LICENCE, version 1.0
+
+DRAFT FOR REVIEW BY COUNSEL IN INDIA BEFORE THE FIRST RELEASE.
+Text in [square brackets] is to be completed or confirmed.
+
+Copyright (c) 2026 PlantNura Consulting & Solutions [full legal name, form of
+entity and registered office]. All rights reserved.
+
+This licence is an agreement between PlantNura Consulting & Solutions
+("PlantNura") and the person or organisation to whom PlantNura has issued a
+TSOpt licence key ("you"). By requesting a licence key, or by installing,
+activating or using the Software, you accept this licence. If you do not
+accept it, do not install or use the Software.
+
+1. DEFINITIONS
+
+"Software" means the TSOpt software in any form: its R code, compiled code,
+Shiny application, command-line tool, documentation, guides, tutorials,
+examples and data files, and any update, patch or new version that PlantNura
+makes available to you.
+
+"Licence key" means the personal key that PlantNura issues to you, which
+records a licence ID, your name, email address, organisation, country, and
+dates of issue and expiry.
+
+"Organisation" means the company, institute, university or other body named
+in your licence key, if any.
+
+"Outputs" means the results you produce with the Software from your own data:
+training-set designs, plans, tables, figures, reports and similar.
+
+2. REGISTRATION
+
+2.1 The Software is licensed only to persons and organisations to whom
+PlantNura has issued a licence key. You obtain one by registering with
+PlantNura (tso_licence_request() in the Software, or by email to
+waseemhussain@plantnura.com [or licence@plantnura.com]).
+
+2.2 The information you give when registering must be true. PlantNura may
+decline or withdraw a registration at its discretion.
+
+2.3 Your licence key is personal. You must keep it confidential and must not
+share, publish or transfer it.
+
+3. LICENCE GRANT
+
+3.1 Subject to your compliance with this licence, PlantNura grants you a
+free-of-charge, non-exclusive, non-transferable, non-sublicensable licence,
+for the period set out in section 9, to install the Software on computers
+that you (or your Organisation) own or control, and to use it for any
+purpose, including research, teaching, and commercial plant and animal
+breeding.
+
+3.2 If your licence key names an Organisation, its employees and the
+contractors working for it may use the Software under that key, for the
+Organisation's purposes. You are responsible for their compliance with this
+licence.
+
+3.3 You may make copies of the Software only as needed to install it on
+such computers, and backup copies for your own use.
+
+4. RESTRICTIONS
+
+Except as expressly permitted in section 3, or as permitted by law in a way
+that cannot be excluded by agreement (including section 52 of the Copyright
+Act, 1957), you must not, and must not allow anyone else to:
+
+(a) distribute, publish, sell, rent, lease, lend, sublicense or otherwise
+    make the Software or any part of it available to any other person,
+    including by uploading it to any repository, package archive, website,
+    container registry or file-sharing service;
+
+(b) modify, adapt, translate or create derivative works of the Software, or
+    combine it with other software to create a new product;
+
+(c) decompile, disassemble or reverse engineer the Software, or attempt to
+    derive its source code from the compiled form;
+
+(d) remove, disable, bypass or circumvent the licence key or any other
+    technical measure that protects the Software, or use a key that was not
+    issued to you;
+
+(e) make the Software or its functions available to other persons as a
+    hosted, network or online service (for example as a web application or
+    an interface for programs), other than to members of your own
+    Organisation;
+
+(f) remove or alter any copyright notice, licence notice or licence ID in
+    the Software or in its Outputs;
+
+(g) use the Software in breach of any applicable law.
+
+5. YOUR DATA AND OUTPUTS
+
+5.1 You keep all rights in your data. The Software runs on your computers
+and does not send your data, your Outputs or information about your use to
+PlantNura or to anyone else; the licence key is checked offline.
+
+5.2 You own your Outputs and may use, publish and share them freely. Outputs
+record your licence ID; please keep it. When you publish work that used the
+Software, please cite it (citation("TSOpt") in R).
+
+6. OWNERSHIP
+
+The Software is licensed, not sold. PlantNura and its licensors keep all
+rights, title and interest in the Software, including all intellectual
+property rights. No right is granted except as expressly stated in this
+licence. If you send PlantNura suggestions or feedback, PlantNura may use
+them freely and without obligation to you.
+
+7. THIRD-PARTY COMPONENTS
+
+The Software uses software of other authors (listed in the file
+THIRD-PARTY-NOTICES that comes with the Software), each under its own
+licence. Those licences govern those components, and nothing in this licence
+limits your rights under them.
+
+8. PERSONAL DATA
+
+PlantNura uses the information you give when registering only to issue and
+administer your licence and to inform you of updates, corrections and
+matters concerning the Software, in accordance with the Digital Personal
+Data Protection Act, 2023 and other applicable law. You may ask PlantNura to
+correct or erase it; erasure ends your licence.
+
+9. TERM AND TERMINATION
+
+9.1 This licence runs until the expiry date recorded in your licence key.
+You may request a new key to continue using the Software.
+
+9.2 This licence ends automatically if you breach any of its terms. If it is
+your first breach and you cure it within 30 days of PlantNura's written
+notice (email is sufficient), your licence is reinstated.
+
+9.3 PlantNura may end your licence for any reason on 30 days' written notice.
+
+9.4 When your licence ends you must stop using the Software and delete all
+copies in your possession or control. Sections 5, 6, 7, 10, 11 and 12
+survive the end of this licence.
+
+10. NO WARRANTY
+
+The Software is provided free of charge, "as is" and "as available", without
+warranty of any kind, express or implied, including warranties of
+merchantability, fitness for a particular purpose, accuracy and
+non-infringement. Breeding and investment decisions based on the Software
+are yours; check its results before relying on them.
+
+11. LIMITATION OF LIABILITY
+
+To the maximum extent permitted by law, PlantNura shall not be liable for
+any indirect, incidental, special, consequential or punitive damages, or for
+any loss of profits, revenue, data, crops, genetic material or goodwill,
+arising out of or in connection with the Software or this licence, however
+caused, even if advised of their possibility. PlantNura's total liability
+arising out of or in connection with the Software or this licence shall not
+exceed INR 1,000 [amount to be confirmed].
+
+12. GOVERNING LAW AND JURISDICTION
+
+This licence is governed by the laws of India. The courts at [city], India
+shall have exclusive jurisdiction over any dispute arising out of or in
+connection with it [or: disputes shall be resolved by arbitration seated at
+[city] under the Arbitration and Conciliation Act, 1996, before a sole
+arbitrator appointed by PlantNura and you jointly].
+
+13. GENERAL
+
+This licence is the entire agreement between you and PlantNura about the
+Software and replaces any earlier understanding. If any provision is held
+invalid, the rest remains in force. PlantNura may publish new versions of
+this licence; a new version applies to Software versions and licence keys
+issued after its publication. A failure to enforce a provision is not a
+waiver. You may not assign this licence. Notices to PlantNura go to
+waseemhussain@plantnura.com [or licence@plantnura.com]; notices to you go to
+the email address in your licence key.

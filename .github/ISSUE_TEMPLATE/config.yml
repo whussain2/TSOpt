@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔑 Request a free licence key
+    url: mailto:waseemhussain@plantnura.com?subject=TSOpt%20licence%20key%20request
+    about: Keys are sent by email. Never post a key in an issue.
+  - name: 🔒 Report a security problem privately
+    url: https://github.com/whussain2/TSOpt/security/policy
+    about: Please don't report vulnerabilities in public issues.

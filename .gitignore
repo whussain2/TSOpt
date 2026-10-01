@@ -1,0 +1,8 @@
+.DS_Store
+.Rhistory
+.Rproj.user/
+*.Rproj
+# never commit licence keys or package sources here (this repository is public)
+*.key
+licence*.txt
+*.pem

@@ -1,0 +1,29 @@
+% Shared look of the TSOpt PDF guides (PlantNura colours, as the tutorial)
+\usepackage{xcolor}
+\definecolor{plantpurple}{HTML}{6A3FA0}
+\definecolor{plantteal}{HTML}{0F9D8E}
+\definecolor{plantnavy}{HTML}{1E3A8A}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{plantpurple} TSOpt walkthrough \textbullet{} PlantNura}
+\fancyhead[R]{\small\nouppercase{\rightmark}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\usepackage{sectsty}
+\allsectionsfont{\color{plantnavy}}
+% room for two-digit section numbers in the table of contents
+\makeatletter\renewcommand{\numberline}[1]{\hb@xt@ 2.8em{#1\hfil}}\makeatother
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{fvextra}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\small}
+\DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere,fontsize=\small}
+\setlength{\emergencystretch}{3em}
+% blockquotes (the "What to look at" notes) as a tinted panel
+\usepackage{framed}
+\renewenvironment{quote}{\definecolor{shadecolor}{HTML}{EFEAF6}\begin{shaded}\small}{\end{shaded}}
+% pandoc loads hyperref after the header includes
+\AtBeginDocument{\hypersetup{colorlinks=true, linkcolor=plantpurple, urlcolor=plantpurple}}
+\floatplacement{figure}{H}

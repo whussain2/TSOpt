@@ -1,0 +1,1733 @@
+---
+title: "TSOpt walkthrough: every function, from data upload to training set"
+subtitle: "A step-by-step check of the whole package on your own data, in every breeding system"
+author: "PlantNura Consulting & Solutions"
+date: "`r format(Sys.Date(), '%d %B %Y')` · TSOpt `r as.character(utils::packageVersion('TSOpt'))`"
+params:
+  geno: ""
+  pheno: ""
+  truth: ""
+  groups: ""
+  costs: ""
+  effects: ""
+  history: ""
+  history_trait: "y"
+  cm_per_mb: -1
+  omics: ""
+  omics_type: "auto"
+  n_train: 60
+  h2: 0.5
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    highlight: tango
+    dev: ragg_png
+    fig_width: 7
+    fig_height: 4.2
+    fig_crop: false
+    includes:
+      in_header: walkthrough_style.tex
+mainfont: DejaVuSans.ttf
+mainfontoptions:
+  - BoldFont=DejaVuSans-Bold.ttf
+  - ItalicFont=DejaVuSans-Oblique.ttf
+  - BoldItalicFont=DejaVuSans-BoldOblique.ttf
+monofont: DejaVuSansMono.ttf
+monofontoptions:
+  - BoldFont=DejaVuSansMono-Bold.ttf
+  - ItalicFont=DejaVuSansMono-Oblique.ttf
+  - BoldItalicFont=DejaVuSansMono-BoldOblique.ttf
+fontsize: 10pt
+geometry: margin=2.2cm
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE, warning = FALSE,
+                      dpi = 200, out.width = "100%", fig.align = "center")
+options(width = 92, digits = 4)
+```
+
+# How to use this document {-}
+
+This document runs **every exported function of TSOpt** in the order a breeder uses them:
+upload the genotype file, check its quality, build the relationship matrices, pack everything
+into one data object, ask whether optimisation is worth it, try every criterion and every
+search, build training sets for every breeding system, protect major genes, check the plans,
+and plan the next season. Each step prints its result and a short explanation of what to look
+for.
+
+**Run it on your own data.** The document has parameters. In RStudio, open it and choose
+*Knit* > *Knit with Parameters...*, then fill in the paths to your files. Or render it from the
+console:
+
+```{r how-to-run, eval = FALSE}
+rmarkdown::render("docs/walkthrough/TSOpt_Walkthrough.Rmd",
+                  params = list(geno   = "my_panel.vcf.gz",    # any format tso_read() reads
+                                pheno  = "my_pheno.csv",       # columns: id, y
+                                groups = "my_groups.csv",      # columns: id, group (optional)
+                                costs  = "my_costs.csv",       # columns: id, cost  (optional)
+                                effects = "my_effects.csv",    # marker, effect[, allele, p] (optional)
+                                history = "my_history.csv",    # id, cycle, trait: forward validation (optional)
+                                cm_per_mb = 0.5,               # map density, for cross prediction (optional)
+                                omics = "my_profiles.csv",     # id, one column per feature/wavelength (optional)
+                                n_train = 100, h2 = 0.4))
+```
+
+Every parameter left empty falls back to the example data shipped with TSOpt: a simulated
+panel of 300 inbred lines and 1,000 SNPs, with phenotypes, true genetic values, groups and
+per-line costs. Because the example is simulated, the true genetic values are known, so
+Section 12 can measure how good a training set really was.
+
+**Your licence key must be active** (`tso_licence("TSO1....")` once on this computer;
+`tso_licence()` shows it). TSOpt is free for everyone; request a key with
+`tso_licence_request()`.
+
+**Run it one chunk at a time.** Put the cursor in a chunk and press Ctrl/Cmd + Shift + Enter.
+The chunks depend on each other in order, so run them from the top.
+
+**Spot anything odd.** After almost every function there is an automatic check, printed as
+`[PASS]` or `[FAIL]`. It tests something that must hold if the function worked: the relationship
+matrix is symmetric, no target line ends up in its own training set, a budget is respected,
+and so on. Section 16 collects every check into a scorecard. A `[FAIL]` is either a bug in TSOpt
+or a problem with the input data, and the check's text says which quantity to look at.
+
+\newpage
+
+# Set-up
+
+```{r libraries}
+library(TSOpt)
+library(ggplot2)
+packageVersion("TSOpt")
+
+ex <- function(f) system.file("extdata", f, package = "TSOpt")   # shipped example files
+pick <- function(p, default) if (nzchar(p)) p else default
+geno_file  <- pick(params$geno,   ex("example_panel.vcf.gz"))
+pheno_file <- pick(params$pheno,  ex("example_pheno.csv"))
+truth_file <- pick(params$truth,  if (nzchar(params$geno)) "" else ex("example_true_values.csv"))
+group_file <- pick(params$groups, if (nzchar(params$geno)) "" else ex("example_groups.csv"))
+cost_file  <- pick(params$costs,  if (nzchar(params$geno)) "" else ex("example_costs.csv"))
+eff_file   <- pick(params$effects, if (nzchar(params$geno)) "" else ex("example_marker_effects.csv"))
+using_example <- !nzchar(params$geno)
+out <- file.path(tempdir(), "tsopt_walkthrough"); dir.create(out, showWarnings = FALSE)
+cat("Genotypes:", geno_file, "\nPhenotypes:", pheno_file,
+    "\nUsing the shipped example data:", using_example, "\n")
+```
+
+The scorecard helper records every check:
+
+```{r checks}
+checks <- data.frame(section = character(), check = character(), result = character())
+section <- "Set-up"
+chk <- function(what, ok, detail = "") {
+  ok <- isTRUE(ok)
+  checks[nrow(checks) + 1, ] <<- list(section, what, if (ok) "PASS" else "FAIL")
+  cat(if (ok) "[PASS] " else "[FAIL] ", what, if (nzchar(detail)) paste0("  (", detail, ")"), "\n",
+      sep = "")
+  invisible(ok)
+}
+timed <- function(expr) { t0 <- proc.time()[["elapsed"]]; v <- expr
+  attr(v, "seconds") <- proc.time()[["elapsed"]] - t0; v }
+```
+
+\newpage
+
+# Uploading genotype data
+
+```{r s1, include = FALSE}
+section <- "1 Upload"
+```
+
+## Your file
+
+`tso_read()` detects the file format, the genotype coding (0/1/2, -1/0/1, letters, IUPAC,
+AB calls, dosages), the missing-value codes, the ploidy and whether markers are in rows or
+columns. It records every decision in a log.
+
+```{r read-main}
+g_raw <- tso_read(geno_file)
+g_raw
+```
+
+What to look for: the number of lines and markers must match what your genotyping provider
+delivered, the detected coding must be right, and the missing rate should be plausible (a
+few per cent for arrays, often more for GBS).
+
+```{r read-main-checks}
+D <- g_raw$dosage
+chk("dosage matrix has lines in rows and markers in columns", nrow(D) > 1 && ncol(D) > 1,
+    paste(nrow(D), "lines x", ncol(D), "markers"))
+chk("line IDs are unique", !anyDuplicated(rownames(D)))
+chk("marker IDs are unique", !anyDuplicated(colnames(D)))
+chk("dosages lie between 0 and the ploidy", all(D >= 0 & D <= g_raw$ploidy, na.rm = TRUE),
+    paste("ploidy", g_raw$ploidy))
+chk("missing rate below 50%", mean(is.na(D)) < 0.5, paste0(round(100 * mean(is.na(D)), 2), "% missing"))
+```
+
+## Every format TSOpt reads
+
+The shipped example panel exists in five formats. Reading all of them must give the same
+lines and markers, and the same relationship matrix (allele coding may flip between formats,
+but relationships must not change).
+
+```{r read-formats}
+fmt <- list(VCF    = ex("example_panel.vcf.gz"),
+            HapMap = ex("example_panel.hmp.txt.gz"),
+            CSV    = ex("example_panel.csv.gz"),
+            PLINK  = sub("\\.bed$", "", ex("example_plink.bed")))
+gs <- lapply(fmt, tso_read, verbose = FALSE)
+data.frame(format = names(gs), lines = sapply(gs, function(x) nrow(x$dosage)),
+           markers = sapply(gs, function(x) ncol(x$dosage)),
+           coding = sapply(gs, function(x) x$format), row.names = NULL)
+K_by_format <- lapply(gs, tso_kinship, scale = FALSE)
+diffs <- sapply(K_by_format[-1], function(K) max(abs(K - K_by_format$VCF)))
+round(diffs, 12)
+chk("VCF, HapMap, CSV and PLINK give the same relationship matrix", all(diffs < 1e-8))
+g_dart <- tso_read(ex("example_dart.csv"), verbose = FALSE)
+chk("DArTseq one-row file is read", nrow(g_dart$dosage) > 0,
+    paste(nrow(g_dart$dosage), "lines x", ncol(g_dart$dosage), "markers"))
+```
+
+## Writing and converting
+
+`tso_write()` converts between formats; the extension chooses the format. Every written file
+is read back and must give the same relationship matrix as the original.
+
+```{r write-formats}
+exts <- c(".vcf", ".vcf.gz", ".hmp.txt", ".bed", ".csv", ".raw", ".rds")
+K0 <- tso_kinship(gs$VCF, scale = FALSE)
+rt <- sapply(exts, function(e) {
+  f <- file.path(out, paste0("roundtrip", e))
+  tso_write(gs$VCF, f)
+  back <- tso_read(if (e == ".bed") sub("\\.bed$", "", f) else f, verbose = FALSE)
+  max(abs(tso_kinship(back, scale = FALSE) - K0))
+})
+round(rt, 12)
+chk("every writable format round-trips to the same kinship", all(rt < 1e-8))
+if (requireNamespace("writexl", quietly = TRUE) && requireNamespace("readxl", quietly = TRUE)) {
+  xl <- file.path(out, "panel.xlsx")
+  writexl::write_xlsx(data.frame(id = rownames(gs$VCF$dosage), gs$VCF$dosage, check.names = FALSE), xl)
+  g_xl <- tso_read(xl, verbose = FALSE)
+  chk("an Excel sheet is read", identical(dim(g_xl$dosage), dim(gs$VCF$dosage)))
+}
+```
+
+## Unusual inputs
+
+Real files are messy. These small inputs test the codings breeders meet most often: allele
+letters in several notations, a matrix with markers in rows, Axiom-style -1 for missing, and
+an autotetraploid dosage matrix.
+
+```{r odd-inputs}
+ids5 <- paste0("L", 1:5)
+calls <- list(pairs = c("AA", "AG", "GG", "AA", "NN"), slash = c("A/A", "A/G", "G/G", "A/A", "./."),
+              iupac = c("A", "R", "G", "A", "N"), ab = c("AA", "AB", "BB", "AA", "--"))
+dos <- sapply(calls, function(v) as.vector(tso_read(matrix(v, 5, 1, dimnames = list(ids5, "m1")),
+                                                    markers_in = "columns", verbose = FALSE)$dosage))
+dos
+chk("allele pairs, slashes, IUPAC and AB calls give the same dosages",
+    all(apply(dos, 1, function(r) length(unique(r)) == 1), na.rm = TRUE))
+Xs <- gs$VCF$dosage[1:20, 1:40]
+rows_df <- data.frame(marker = colnames(Xs), t(Xs), check.names = FALSE)
+chk("markers in rows are transposed automatically",
+    identical(rownames(tso_read(rows_df, verbose = FALSE)$dosage), rownames(Xs)))
+ax <- Xs - 1; ax[1, 1] <- -9
+chk("-1/0/1 coding is recognised", isTRUE(all.equal(unname(tso_read(Xs - 1, verbose = FALSE)$dosage), unname(Xs))))
+set.seed(4)
+tet <- matrix(sample(0:4, 30 * 50, TRUE), 30, 50, dimnames = list(paste0("C", 1:30), paste0("m", 1:50)))
+chk("0-4 dosages are read as an autotetraploid", tso_read(tet, verbose = FALSE)$ploidy == 4)
+```
+
+\newpage
+
+# Quality control
+
+```{r s2, include = FALSE}
+section <- "2 Quality control"
+```
+
+`tso_qc()` removes badly called lines, then markers with a low call rate or a low minor-allele
+frequency, imputes what is left missing, and stores the base allele frequencies. Every step goes
+into the log.
+
+```{r qc-default}
+g <- tso_qc(g_raw)
+```
+
+```{r qc-checks}
+chk("QC keeps at least half of the markers", ncol(g$dosage) >= 0.5 * ncol(g_raw$dosage),
+    paste(ncol(g$dosage), "of", ncol(g_raw$dosage)))
+chk("no missing values left after imputation", !anyNA(g$dosage))
+mafs <- pmin(g$base_freq, 1 - g$base_freq)
+chk("every kept marker has MAF >= 0.05", all(mafs >= 0.05 - 1e-12))
+chk("base allele frequencies are stored, one per marker", length(g$base_freq) == ncol(g$dosage))
+chk("counted alleles are stored with the base frequencies",
+    !is.null(attr(g$base_freq, "counted")) || is.null(g_raw$map$counted))
+```
+
+The distributions behind these decisions:
+
+```{r qc-plots, fig.height = 3.2}
+qc_df <- rbind(data.frame(what = "minor-allele frequency (kept markers)", value = mafs),
+               data.frame(what = "call rate per marker (before QC)", value = colMeans(!is.na(g_raw$dosage))))
+ggplot(qc_df, aes(value)) + geom_histogram(bins = 30, fill = tso_colors()[["training"]]) +
+  facet_wrap(~ what, scales = "free") + tso_theme() + labs(x = NULL, y = "markers")
+```
+
+A stricter set of thresholds, for comparison:
+
+```{r qc-strict}
+g_strict <- tso_qc(g_raw, maf = 0.10, call_rate = 0.95, line_call_rate = 0.9, verbose = FALSE)
+c(default = ncol(g$dosage), strict = ncol(g_strict$dosage))
+chk("stricter thresholds keep fewer (or equal) markers", ncol(g_strict$dosage) <= ncol(g$dosage))
+```
+
+## Allele orientation across breeding cycles
+
+HapMap and allele-letter files are coded by each file's own minor allele, so the same marker can
+flip between two files. When the base frequencies of an earlier cycle are reused, TSOpt re-orients
+the new file to the stored counted allele.
+
+```{r orientation}
+if (using_example) {
+  hmp_sub <- gs$HapMap; hmp_sub$dosage <- hmp_sub$dosage[1:60, ]
+  bf <- tso_qc(gs$VCF, verbose = FALSE)$base_freq
+  aligned <- tso_qc(hmp_sub, base_freq = bf, verbose = FALSE)
+  flipped <- grep("re-oriented", aligned$log, value = TRUE)
+  cat(if (length(flipped)) flipped else "no marker needed re-orienting", "\n")
+  vcf_qc <- tso_qc(gs$VCF, verbose = FALSE)
+  cm <- intersect(colnames(aligned$dosage), colnames(vcf_qc$dosage))
+  called <- !is.na(gs$VCF$dosage[1:60, cm]) & !is.na(gs$HapMap$dosage[1:60, cm])
+  agree <- mean((aligned$dosage[, cm] == vcf_qc$dosage[1:60, cm])[called])
+  cat("re-oriented HapMap dosages agree with the VCF on", round(100 * agree, 2), "% of called genotypes\n")
+  chk("re-oriented HapMap dosages equal the VCF dosages", agree == 1)
+  # K is rescaled to mean diagonal 1 within each panel, so compare the unscaled matrices
+  sub_vcf <- vcf_qc; sub_vcf$dosage <- vcf_qc$dosage[1:60, cm]
+  chk("and give the same (unscaled) relationship matrix",
+      max(abs(tso_kinship(aligned, base_freq = bf[cm], scale = FALSE) -
+              tso_kinship(sub_vcf, base_freq = bf[cm], scale = FALSE))) < 1e-8)
+}
+```
+
+\newpage
+
+# Relationship matrices
+
+```{r s3, include = FALSE}
+section <- "3 Relationship matrices"
+```
+
+## Additive (VanRaden)
+
+```{r kin-add}
+K <- tso_kinship(g)
+round(K[1:6, 1:6], 3)
+ev <- eigen(K, symmetric = TRUE, only.values = TRUE)$values
+c(mean_diagonal = mean(diag(K)), min_eigenvalue = min(ev), mean_off_diagonal = mean(K[upper.tri(K)]))
+chk("K is symmetric", isSymmetric(unname(K)))
+chk("K is positive semi-definite", min(ev) > -1e-8)
+chk("mean diagonal of K is 1 (entry-mean scale)", abs(mean(diag(K)) - 1) < 1e-3)
+chk("row and column names are the line IDs", identical(rownames(K), rownames(g$dosage)))
+```
+
+The eigenvalue spectrum tells how structured the panel is: a few dominant eigenvalues mean
+strong population structure; a flat spectrum means a continuum.
+
+```{r kin-spectrum, fig.height = 3}
+ggplot(data.frame(k = seq_along(ev)[1:30], share = (ev / sum(ev))[1:30]), aes(k, share)) +
+  geom_col(fill = tso_colors()[["training"]]) + tso_theme() +
+  labs(x = "principal component", y = "share of genetic variance", title = "Spectrum of K")
+```
+
+The relationship matrix as a heat map, lines ordered by genetic group (each block on the
+diagonal is a subpopulation or family):
+
+```{r kin-heatmap, fig.height = 5}
+tso_plot(tso_data(g, groups = if (nzchar(group_file)) {
+  d <- utils::read.csv(group_file); stats::setNames(d$group, as.character(d$id)) }, qc = FALSE,
+  verbose = FALSE), "kinship")
+```
+
+## Dominance, weighted and pedigree kernels
+
+```{r kin-other}
+if (g$ploidy == 2) {
+  Kd <- tso_kinship(g, method = "dominance")
+  chk("dominance kernel is symmetric and PSD",
+      isSymmetric(unname(Kd)) && min(eigen(Kd, TRUE, only.values = TRUE)$values) > -1e-8)
+}
+w <- setNames(rep(1, ncol(g$dosage)), colnames(g$dosage)); w[1:50] <- 10
+Kw <- tso_kinship(g, weights = w)
+chk("weighted kinship differs from the plain one", max(abs(Kw - K)) > 1e-4)
+w0 <- w; w0[] <- 1
+chk("weights all equal to 1 reproduce the plain kinship", max(abs(tso_kinship(g, weights = w0) - K)) < 1e-10)
+ped <- data.frame(id = c("F1", "F2", "F3", "S1", "S2", "S3", "G1"),
+                  sire = c(NA, NA, NA, "F1", "F1", "F1", "S1"),
+                  dam  = c(NA, NA, NA, "F2", "F2", "F3", "S3"))
+A <- tso_kinship(method = "pedigree", pedigree = ped, scale = FALSE, ridge = 0)
+A
+chk("pedigree: full sibs S1, S2 are related 0.5", abs(A["S1", "S2"] - 0.5) < 1e-12)
+chk("pedigree: half sibs S1, S3 are related 0.25", abs(A["S1", "S3"] - 0.25) < 1e-12)
+chk("pedigree: G1 (S1 x S3) is inbred, A = 1.125", abs(A["G1", "G1"] - 1.125) < 1e-12)
+```
+
+## Epistatic, non-parametric and single-step kernels
+
+`tso_kernels()` builds every covariance model the design can use. Dominance kernels are only
+built when your material is heterozygous (inbred lines carry no dominance):
+
+```{r kernels}
+het <- mean(abs(g$dosage - 1) < 0.5, na.rm = TRUE)
+which_k <- c("A", if (g$ploidy == 2 && het > 0.01) "D", "AA", "gaussian")
+kk <- tso_kernels(g, which = which_k)
+kk
+chk("every kernel has mean diagonal 1", all(abs(sapply(kk$K, function(M) mean(diag(M))) - 1) < 1e-10))
+chk("every kernel is positive semi-definite",
+    all(sapply(kk$K, function(M) min(eigen(M, TRUE, only.values = TRUE)$values)) > -1e-8))
+AA0 <- kk$K$A * kk$K$A
+chk("AA is the element-wise square of A", max(abs(kk$K$AA - AA0 / mean(diag(AA0)))) < 1e-8)
+off <- upper.tri(kk$K$A)
+chk("epistatic relationships fall off faster than additive ones",
+    mean(abs(kk$K$AA[off])) < mean(abs(kk$K$A[off])))
+Dp <- TSOpt:::.pedigree_D(ped, TSOpt:::.pedigree_A(ped))
+chk("pedigree dominance: full sibs share 0.25, half sibs 0", abs(Dp["S1", "S2"] - 0.25) < 1e-12 && Dp["S1", "S3"] == 0)
+# single-step H: 10 new crosses of genotyped parents, not genotyped themselves
+par_ids <- rownames(g$dosage)[1:20]
+ped_h <- data.frame(id = c(par_ids, paste0("new", 1:10)), p1 = c(rep(NA, 20), par_ids[1:10]),
+                    p2 = c(rep(NA, 20), par_ids[11:20]))
+gH <- g; gH$dosage <- g$dosage[par_ids, ]
+H <- tso_kernels(gH, pedigree = ped_h, which = "H")$K$H
+chk("H covers the ungenotyped crosses", all(paste0("new", 1:10) %in% rownames(H)))
+chk("a new cross is closer to its parent than to other lines", H["new1", par_ids[1]] > mean(H["new1", par_ids[-c(1, 11)]]))
+tp_k <- tso_data(g, kernels = kk, kernel_share = "robust", qc = FALSE, verbose = FALSE)
+chk("tso_data combines the kernels at the centre shares",
+    max(abs(tp_k$K - TSOpt:::.combine_kernels(tp_k$kernels$K, tp_k$kernels$share))) < 1e-10)
+```
+
+\newpage
+
+# The data object and the breeding systems
+
+```{r s4, include = FALSE}
+section <- "4 Data object"
+```
+
+`tso_data()` packs genotypes, the relationship matrix, the breeding system, groups, families and
+costs into one object. A *unit* is anything you can phenotype: a line, a hybrid, a clone, a line
+in one environment, or one trait on one line.
+
+## Inbred lines (wheat, rice, barley, soybean)
+
+```{r data-inbred}
+read_side <- function(f, col) if (nzchar(f) && file.exists(f)) { d <- utils::read.csv(f)
+  stats::setNames(d[[col]], as.character(d$id)) } else NULL
+groups <- read_side(group_file, "group")
+costs  <- read_side(cost_file, "cost")
+tp <- tso_data(g, groups = groups, cost = costs, qc = FALSE)
+ids <- tp$units$id; N <- length(ids)
+n_train <- min(params$n_train, floor(0.3 * N))
+targets <- ids[seq(N - round(0.15 * N) + 1, N)]    # the last 15% of lines play "this season"
+cat("units:", N, " training-set size used below:", n_train, " targets:", length(targets), "\n")
+chk("one unit per line", nrow(tp$units) == nrow(g$dosage))
+chk("the kernel covers every unit", identical(dim(tp$K), c(N, N)))
+if (!is.null(costs)) chk("costs attached to every unit", !anyNA(tp$units$cost))
+```
+
+The population structure the design will see:
+
+```{r data-pca, fig.height = 4}
+tso_plot(tp)
+```
+
+## Clonal crops: diploid (cassava, banana) and tetraploid (potato)
+
+For clones the non-additive part matters, so a dominance kernel is added for diploids. The
+tetraploid panel is built from two outbred diploid simulations (dosages 0 to 4).
+
+```{r data-clonal}
+tp_clone <- tso_data(g, system = "clonal", qc = FALSE, verbose = FALSE)
+chk("clonal kernel differs from the additive one", max(abs(tp_clone$K - tp$K)) > 1e-6)
+p_a <- tso_simulate_panel(n = 150, markers = 600, seed = 31, type = "outbred")
+p_b <- tso_simulate_panel(n = 150, markers = 600, seed = 32, type = "outbred")
+X4 <- p_a$dosage + p_b$dosage; rownames(X4) <- paste0("POT", seq_len(nrow(X4)))
+g_potato <- tso_read(X4, ploidy = 4, verbose = FALSE)
+tp_potato <- tso_data(g_potato, system = "clonal")
+chk("tetraploid ploidy detected", g_potato$ploidy == 4)
+```
+
+## Outcrossing crops (ryegrass, alfalfa, oil palm): families
+
+```{r data-outcross}
+fam <- setNames(paste0("F", ceiling(seq_len(N) / 10)), ids)
+tp_out <- tso_data(g, system = "outcross", families = fam, qc = FALSE, verbose = FALSE)
+chk("families attached", length(unique(tp_out$units$family)) == length(unique(fam)))
+```
+
+## Hybrids (maize, sorghum, rice hybrids)
+
+Units are all crosses between a female and a male pool; their relationships are built from the
+parents (GCA of each pool plus SCA). Hybrids involving parents not declared `crossable` can be
+targets but not training units.
+
+```{r data-hybrid}
+n_pool <- min(30, floor(N / 4))
+fem <- ids[1:n_pool]; mal <- ids[(n_pool + 1):(2 * n_pool)]
+tp_hyb <- tso_data(g, system = "hybrid", pools = list(fem, mal), qc = FALSE,
+                   crossable = c(fem[1:(n_pool - 5)], mal[1:(n_pool - 5)]))
+chk("every female x male cross is a unit", nrow(tp_hyb$units) == n_pool^2)
+chk("hybrids of non-crossable parents are not candidates", sum(!tp_hyb$units$crossable) > 0)
+```
+
+## Genebank or diversity panel
+
+```{r data-genebank}
+tp_bank <- tso_data(g, system = "genebank", qc = FALSE, verbose = FALSE)
+chk("genebank object built", inherits(tp_bank, "tso_data"))
+```
+
+## Pedigree or kinship only
+
+When there are no markers, a pedigree or a relationship matrix from elsewhere is enough. A
+matrix that is not positive semi-definite (bent pedigrees, edited imports) is repaired with a
+warning.
+
+```{r data-kinship-only}
+tp_ped <- tso_data(pedigree = ped)
+tp_ped
+Kbad <- K[1:40, 1:40]; Kbad[1, 2] <- Kbad[2, 1] <- 5
+bent <- tryCatch(tso_data(kinship = Kbad, verbose = FALSE), warning = function(w) conditionMessage(w))
+cat(substr(bent, 1, 110), "...\n")
+chk("a non-PSD kinship is detected and bent", grepl("positive semi-definite", bent))
+```
+
+## Multi-environment and multi-trait data
+
+```{r data-met-mt}
+Om <- matrix(c(1, .7, .4, .7, 1, .5, .4, .5, 1), 3, dimnames = rep(list(c("Site1", "Site2", "Site3")), 2))
+tp_met <- tso_data(g, envs = colnames(Om), env_cor = Om, qc = FALSE,
+                   env_noise = c(Site1 = 1, Site2 = 2, Site3 = 1))
+chk("units are line x environment cells", nrow(tp_met$units) == 3 * N)
+tp_mt <- tso_data(g, traits = c("yield", "protein", "ndvi"), trait_h2 = c(0.3, 0.5, 0.6),
+                  gcor = matrix(c(1, .4, .2, .4, 1, .1, .2, .1, 1), 3),
+                  trait_cost = c(yield = 20, protein = 8, ndvi = 1), plot_cost = 10, qc = FALSE,
+                  verbose = FALSE)
+chk("units are line x trait cells", nrow(tp_mt$units) == 3 * N)
+```
+
+\newpage
+
+# Is optimisation worth it here?
+
+```{r s5, include = FALSE}
+section <- "5 Diagnose and size"
+```
+
+## tso_diagnose()
+
+```{r diagnose}
+dg <- tso_diagnose(tp, n = n_train)
+dg
+chk("diagnosis gives a traffic-light verdict", dg$verdict$light %in% c("GREEN", "AMBER", "RED"))
+chk("optimised accuracy >= random at every size", all(dg$curve$optimised_acc >= dg$curve$random_acc - 1e-9))
+```
+
+```{r diagnose-plot, fig.height = 5}
+tso_plot(dg)
+```
+
+The two panels separately. The size curve shows accuracy against the number of lines
+phenotyped, for optimised and random sets; the gap between the curves is what optimisation
+buys. The structure panel shows the groups the stratification will use.
+
+```{r diagnose-parts, fig.height = 3.6}
+tso_plot(dg, "size_curve")
+tso_plot(dg, "structure")
+```
+
+```{r diagnose-table}
+knitr::kable(dg$curve, digits = 3, row.names = FALSE)
+```
+
+## tso_sample_size(): how many lines?
+
+```{r sample-size}
+ss <- tso_sample_size(tp, target = targets)
+ss
+chk("n for 95% <= n for 99%", ss$n_for[["0.95"]] <= ss$n_for[["0.99"]])
+chk("the optimised curve never needs more plots than random", all(ss$savings >= 0, na.rm = TRUE))
+```
+
+```{r sample-size-plot}
+tso_plot(ss)
+```
+
+\newpage
+
+# Every criterion
+
+```{r s6, include = FALSE}
+section <- "6 Criteria"
+```
+
+TSOpt has 18 built-in criteria in five tiers, plus any function you write:
+
+```{r criteria-table}
+crit <- tso_criteria()
+knitr::kable(crit[, c("criterion", "tier", "search")], row.names = FALSE)
+```
+
+Each criterion now designs a training set for the same problem (predict the targets, choose
+`n_train` lines). Every set is then scored with the same yardstick, the exact CDmean at the
+given heritability, so the table shows what each criterion trades away.
+
+```{r criteria-loop}
+crit_sets <- list()
+run_crit <- function(cr) {
+  d <- if (cr == "cdpop") tp_out else tp           # CDpop compares family means: families below
+  p <- timed(tso_design(d, n = n_train, target = targets, criterion = cr, h2 = params$h2,
+                        iterations = 100, n_random = 20, verbose = FALSE))
+  crit_sets[[cr]] <<- p$selected$id
+  data.frame(criterion = cr, lines = nrow(p$selected),
+             targets_in_training = sum(p$selected$id %in% targets),
+             exact_CDmean = tso_score(tp, train = p$selected$id, target = targets, h2 = params$h2,
+                                      criteria = "cdmean_exact")[["cdmean_exact"]],
+             seconds = round(attr(p, "seconds"), 2))
+}
+crit_res <- do.call(rbind, lapply(crit$criterion, run_crit))
+crit_res$exact_CDmean <- round(crit_res$exact_CDmean, 4)
+knitr::kable(crit_res[order(-crit_res$exact_CDmean), ], row.names = FALSE)
+chk("every criterion returns n_train lines", all(crit_res$lines == n_train))
+chk("no criterion puts a target in the training set", all(crit_res$targets_in_training == 0))
+chk("cdmean (the default) beats random sampling",
+    crit_res$exact_CDmean[crit_res$criterion == "cdmean"] > crit_res$exact_CDmean[crit_res$criterion == "random"])
+```
+
+```{r criteria-plot, fig.height = 4.4}
+crit_res$tier <- crit$tier[match(crit_res$criterion, crit$criterion)]
+ggplot(crit_res, aes(stats::reorder(criterion, exact_CDmean), exact_CDmean, fill = tier)) +
+  geom_col() + coord_flip() + tso_theme() +
+  scale_fill_manual(values = unname(tso_colors("groups", length(unique(crit_res$tier))))) +
+  labs(x = NULL, y = "exact CDmean of the targets", fill = NULL,
+       title = "Every criterion on the same problem", subtitle = "higher is better")
+```
+
+Where the training sets of four contrasting criteria sit in the genetic space:
+
+```{r criteria-pca, fig.height = 5.5}
+pcs <- tp$pca$x[, 1:2]; colnames(pcs) <- c("PC1", "PC2")
+show_c <- intersect(c("cdmean", "coverage", "maximin", "kinship"), names(crit_sets))
+pc_df <- do.call(rbind, lapply(show_c, function(cr) data.frame(pcs, criterion = cr,
+  role = ifelse(ids %in% crit_sets[[cr]], "training", ifelse(ids %in% targets, "target", "candidate")))))
+ggplot(pc_df, aes(PC1, PC2, colour = role)) + geom_point(size = 0.9, alpha = 0.8) +
+  facet_wrap(~ criterion) + tso_theme() +
+  scale_colour_manual(values = c(training = tso_colors()[["training"]], target = tso_colors()[["target"]],
+                                 candidate = tso_colors()[["candidate"]])) + labs(colour = NULL)
+```
+
+What to look at: the CDmean-family criteria sit at the top because the yardstick is CDmean;
+the model-free ones (coverage, maximin, PAM) and the baselines show how much a model-based
+design adds on this panel. The `kinship` baseline (the lines most related to the targets) is
+kept only for comparison: in the head-to-head benchmark it was worse than random on average.
+
+## Your own criterion, and the direction check
+
+A user function receives the selected IDs and the data object and returns a number. Things
+you want small (error, similarity) must be minimised; TSOpt probes the function and warns when
+it looks like it is optimised in the wrong direction.
+
+```{r custom-criterion}
+similarity <- function(ids, data) mean(data$K[ids, ids])
+warn <- tryCatch({ tso_design(tp, n = 30, criterion = similarity, iterations = 50, verbose = FALSE); "" },
+                 warning = function(w) conditionMessage(w))
+cat(substr(warn, 1, 120), "...\n")
+chk("maximising a similarity triggers the wrong-direction warning", grepl("minimi", warn))
+p_div <- tso_design(tp, n = 30, criterion = similarity, direction = "minimize", iterations = 100,
+                    verbose = FALSE)
+set.seed(1); rand_sim <- mean(replicate(20, similarity(sample(ids, 30), tp)))
+c(minimised = similarity(p_div$selected$id, tp), random_sets = rand_sim)
+chk("minimised similarity is below that of random sets", similarity(p_div$selected$id, tp) < rand_sim)
+```
+
+\newpage
+
+# Every search
+
+```{r s7, include = FALSE}
+section <- "7 Searches"
+```
+
+The same criterion (CDmean at one heritability) optimised by each search. Greedy adds the best
+line one at a time; exchange then swaps; ROTS (tabu) keeps moving past local optima; the genetic
+algorithm with simulated annealing works for any criterion; restarts run the local searches from
+several perturbed starts.
+
+```{r searches}
+run_search <- function(s, restarts = 0) {
+  p <- timed(tso_design(tp, n = n_train, target = targets, h2 = params$h2, search = s,
+                        restarts = restarts, iterations = 200, n_random = 20, verbose = FALSE))
+  data.frame(search = paste0(s, if (restarts) paste0(" + ", restarts, " restarts") else ""),
+             criterion_value = p$value$criterion_value %||% NA,
+             exact_CDmean = tso_score(tp, train = p$selected$id, target = targets, h2 = params$h2,
+                                      criteria = "cdmean_exact")[["cdmean_exact"]],
+             seconds = round(attr(p, "seconds"), 2))
+}
+`%||%` <- function(a, b) if (is.null(a)) b else a
+sr <- rbind(run_search("greedy"), run_search("greedy+exchange"), run_search("tabu"),
+            run_search("tabu", restarts = 3), run_search("ga"))
+sr[, 2:3] <- round(sr[, 2:3], 5)
+knitr::kable(sr, row.names = FALSE)
+cv <- sr$exact_CDmean
+chk("exchange is at least as good as greedy", cv[2] >= cv[1] - 1e-6)
+chk("tabu is at least as good as exchange", cv[3] >= cv[2] - 1e-6)
+chk("restarts never make tabu worse", cv[4] >= cv[3] - 1e-6)
+```
+
+The search trace of the tabu search: the criterion after every accepted move. Greedy climbs
+first, then exchange and tabu moves refine the set, sometimes accepting a worse move to escape a
+local optimum:
+
+```{r search-trace, fig.height = 3.4}
+p_tabu <- tso_design(tp, n = n_train, target = targets, h2 = params$h2, search = "tabu", verbose = FALSE)
+tso_plot(p_tabu, "search")
+```
+
+What to look at: the harder searches raise the criterion a little. In the benchmark this extra
+criterion did **not** give better predictions, which is why the default is the plain greedy
+search on robust CDmean.
+
+\newpage
+
+# Building training sets: the core options
+
+```{r s8, include = FALSE}
+section <- "8 Core designs"
+```
+
+## The default
+
+Robust CDmean (averaged over heritability 0.2, 0.5 and 0.8), exact fixed intercept, greedy
+search, automatic stratification when the panel has discrete groups.
+
+```{r default}
+plan <- tso_design(tp, n = n_train)
+plan
+chk("default returns n_train lines", nrow(plan$selected) == n_train)
+chk("default beats every random set", plan$value$percentile >= 0.95,
+    paste0("better than ", round(100 * plan$value$percentile), "% of random sets"))
+chk("robust design reports CD at each heritability", length(plan$value$cd_by_h2) == 3)
+```
+
+**Reading the printout, line by line.**
+
+* *Criterion*: what was optimised. "exact (fixed intercept)" means the trait mean is treated as
+  an unknown fixed effect, as it is in the GBLUP you will fit; "averaged over h2 = 0.2, 0.5, 0.8"
+  is the robust default.
+* *Expected*: the CDmean (expected reliability of the target contrasts) of the chosen set,
+  against the mean and spread of random sets of the same size, and the share of random sets it
+  beats.
+* *Verdict*: GREEN when the expected accuracy gain over random is 5% or more and the targets are
+  covered, AMBER for 2 to 5%, RED below 2% (random sampling is then fine).
+* *Structure*: whether the panel has discrete groups and how the lines were allocated to them.
+* *Coverage*: the share of targets with a close relative (relationship of 0.20 or more) in the
+  training set, and how many targets have no relative at all.
+* *Divide*: candidates whose predictions will be too unreliable to select on.
+* *Alleles*: the share of the targets' alleles and 5-marker haplotypes that also occur in the
+  training set.
+
+The selected lines, their expected reliability, and every unit's role:
+
+```{r default-tables}
+knitr::kable(utils::head(plan$selected[, intersect(c("order", "id", "group", "cost", "reliability"),
+                                                    names(plan$selected))], 12), digits = 3)
+table(plan$units$role)
+```
+
+```{r default-plots, fig.height = 3.4}
+tso_plot(plan, "baseline")
+tso_plot(plan, "pca")
+```
+
+## Targeted
+
+```{r targeted}
+plan_t <- tso_design(tp, n = n_train, target = targets, verbose = FALSE)
+plan_t
+chk("targets are never in the training set", !any(plan_t$selected$id %in% targets))
+```
+
+A fair comparison: the untargeted design above may phenotype target lines themselves, which
+flatters it on those targets. Restricted to the same candidates (targets excluded), the targeted
+design must predict the targets at least as well, at the heritability the score uses:
+
+```{r targeted-fair}
+plan_u <- tso_design(tp, n = n_train, candidates = setdiff(ids, targets), h2 = params$h2, verbose = FALSE)
+plan_t5 <- tso_design(tp, n = n_train, target = targets, h2 = params$h2, verbose = FALSE)
+sc <- c(untargeted = tso_score(tp, train = plan_u$selected$id, target = targets, h2 = params$h2)[["cdmean"]],
+        targeted = tso_score(tp, train = plan_t5$selected$id, target = targets, h2 = params$h2)[["cdmean"]])
+round(sc, 4)
+chk("targeted design predicts the targets better than an untargeted one from the same candidates",
+    sc[["targeted"]] >= sc[["untargeted"]] - 1e-6)
+```
+
+## Heritability: known value or your own prior grid
+
+```{r h2}
+p_h <- tso_design(tp, n = n_train, target = targets, h2 = params$h2, verbose = FALSE)
+p_grid <- tso_design(tp, n = n_train, target = targets, h2 = c(0.1, 0.3, 0.5), verbose = FALSE)
+round(p_grid$value$cd_by_h2, 4)
+chk("a single h2 is used as given", isTRUE(all.equal(p_h$spec$h2, params$h2)))
+```
+
+## A budget with unit costs
+
+```{r budget}
+if (!is.null(costs)) {
+  bud <- 2 * n_train * stats::median(tp$units$cost)
+  p_bud <- tso_design(tp, budget = bud, target = targets, verbose = FALSE)
+  c(budget = bud, spent = p_bud$spent, lines = nrow(p_bud$selected))
+  chk("budget is respected", p_bud$spent <= bud + 1e-8)
+} else cat("No cost file given: budget designs skipped.\n")
+```
+
+## Field reality: checks, lost seed and last season's data
+
+```{r field-reality}
+chk_lines <- ids[1:3]; lost <- ids[4:10]; last_year <- ids[11:40]
+p_real <- tso_design(tp, n = n_train, must_include = chk_lines, exclude = lost, history = last_year,
+                     history_weight = 0.8, verbose = FALSE)
+head(p_real$selected[, c("order", "id", "forced")], 5)
+chk("checks are always included", all(chk_lines %in% p_real$selected$id))
+chk("excluded lines are never selected", !any(lost %in% p_real$selected$id))
+chk("history lines are not selected again", !any(last_year %in% p_real$selected$id))
+chk("history lines are never evaluation targets", !any(p_real$index$history %in% p_real$index$eval))
+```
+
+## Quotas, caps and replicates
+
+```{r quotas}
+if (!is.null(groups)) {
+  grp_lev <- names(table(tp$units$group))
+  q <- setNames(rep(floor(n_train / length(grp_lev)), length(grp_lev)), grp_lev)
+  p_q <- tso_design(tp, n = sum(q), group_quota = q, verbose = FALSE)
+  print(table(p_q$selected$group))
+  chk("group quotas are met exactly", all(table(p_q$selected$group)[grp_lev] == q))
+}
+p_fam <- tso_design(tp_out, n = n_train, max_per_family = 3, verbose = FALSE)
+chk("no family exceeds the cap of 3", max(table(p_fam$selected$family)) <= 3)
+p_rep <- tso_design(tp, n = n_train, reps = 2, h2 = 0.2, stratify = "none", verbose = FALSE)
+chk("replicated design fills all plots", nrow(p_rep$selected) == n_train)
+chk("no line gets more than 2 plots", max(table(p_rep$selected$id)) <= 2)
+```
+
+## Fixed effects: trials, blocks, covariates
+
+Fixed effects are handled exactly. Every level of a factor fixed effect is opened with two
+units, because the first unit at a level only estimates that level's mean.
+
+```{r fixed}
+tp_tr <- tp; tp_tr$units$trial <- rep(c("A", "B", "C"), length.out = N)
+p_fx <- tso_design(tp_tr, n = n_train, fixed = "trial", verbose = FALSE)
+p_fx$spec$fixed
+table(p_fx$selected$trial)
+chk("every trial gets at least 2 lines", all(table(factor(p_fx$selected$trial, levels = c("A", "B", "C"))) >= 2))
+cov <- matrix(rnorm(N), ncol = 1, dimnames = list(ids, "moisture"))
+p_cov <- tso_design(tp, n = n_train, fixed = cov, verbose = FALSE)
+chk("a covariate matrix is accepted as a fixed effect", identical(p_cov$spec$fixed_columns, "moisture"))
+```
+
+## Genetic model: total or breeding value
+
+With a non-additive model, a design can predict the total genetic value (the line itself) or the
+breeding value (the additive part, for choosing parents). Both are exact:
+
+```{r value-bv}
+tp_aa <- tso_data(g, kernels = c("A", "AA"), qc = FALSE, verbose = FALSE)
+p_tv <- tso_design(tp_aa, n = n_train, target = targets, verbose = FALSE)
+p_bv <- tso_design(tp_aa, n = n_train, target = targets, value = "breeding", verbose = FALSE)
+p_bv
+chk("the robust design averages over 3 share x 3 heritability scenarios", length(p_bv$value$cd_by_scenario) == 9)
+Sb <- match(p_bv$selected$id, tp_aa$units$id); Tb <- setdiff(match(targets, tp_aa$units$id), Sb)
+Cb <- diag(length(Tb)) - 1 / length(Tb); Kb <- tp_aa$K; Ka <- tp_aa$K_add
+Vb <- Kb[Sb, Sb] + diag(1, length(Sb))
+cd_manual <- mean(diag(Cb %*% Ka[Tb, Sb] %*% solve(Vb, Ka[Sb, Tb]) %*% Cb) / diag(Cb %*% Ka[Tb, Tb] %*% Cb))
+chk("breeding-value CDmean matches the direct formula",
+    abs(tso_score(tp_aa, p_bv$selected$id, target = targets, value = "breeding")[["cdmean"]] - cd_manual) < 1e-8)
+chk("the plan reports that it predicts breeding values", identical(p_bv$spec$value, "breeding"))
+cat("lines in common between the total-value and breeding-value plans:",
+    length(intersect(p_tv$selected$id, p_bv$selected$id)), "of", n_train, "\n")
+```
+
+\newpage
+
+# Training sets for every crop and breeding system
+
+```{r s9, include = FALSE}
+section <- "9 Breeding systems"
+```
+
+## Wheat, rice, barley: inbred lines, several goals
+
+```{r goals}
+goals <- c("accuracy", "gain", "information", "reference_panel", "correlation")
+gres <- do.call(rbind, lapply(goals, function(gl) {
+  p <- tso_design(tp, n = n_train, target = targets, goal = gl, iterations = 100, n_random = 20,
+                  verbose = FALSE)
+  data.frame(goal = gl, criterion = p$spec$criterion, lines = nrow(p$selected),
+             exact_CDmean = round(tso_score(tp, train = p$selected$id, target = targets,
+                                            criteria = "cdmean_exact")[["cdmean_exact"]], 4))
+}))
+knitr::kable(gres, row.names = FALSE)
+chk("every goal returns a full training set", all(gres$lines == n_train))
+```
+
+## Maize, sorghum: hybrids
+
+```{r hybrids}
+p_hyb <- tso_design(tp_hyb, n = 3 * n_pool, max_per_parent = 6, verbose = FALSE)
+p_hyb
+par_use <- table(c(p_hyb$selected$parent1, p_hyb$selected$parent2))
+chk("no parent is used in more than 6 training hybrids", max(par_use) <= 6)
+chk("only crossable parents appear in training",
+    all(p_hyb$selected$parent1 %in% fem[1:(n_pool - 5)] & p_hyb$selected$parent2 %in% mal[1:(n_pool - 5)]))
+p_h0 <- tso_design(tp_hyb, n = 3 * n_pool, predict = "H0", verbose = FALSE)
+chk("predict = H0 targets hybrids of two untested parents", grepl("H0", p_h0$spec$target))
+```
+
+```{r hybrid-plot, fig.height = 5}
+tso_plot(p_hyb, "hybrid_grid")
+```
+
+## Potato (tetraploid) and cassava (diploid): clones
+
+```{r clones}
+p_pot <- tso_design(tp_potato, n = 40, verbose = FALSE)
+p_cas <- tso_design(tp_clone, n = n_train, verbose = FALSE)
+c(potato = p_pot$value$cdmean, cassava = p_cas$value$cdmean)
+p_pot
+chk("tetraploid clonal design runs", nrow(p_pot$selected) == 40)
+```
+
+```{r clones-plot, fig.height = 3.6}
+tso_plot(p_pot, "pca")
+```
+
+```{r clones-checks}
+chk("diploid clonal design runs", nrow(p_cas$selected) == n_train)
+```
+
+## Ryegrass, alfalfa: outcrossing families (CDpop)
+
+```{r outcross-design}
+p_pop <- tso_design(tp_out, n = n_train, goal = "families", verbose = FALSE)
+chk("family-mean design (CDpop) runs", p_pop$spec$criterion == "cdpop")
+length(unique(p_pop$selected$family))
+```
+
+## Genebank core collection
+
+```{r genebank-design}
+p_core <- tso_design(tp_bank, n = n_train, goal = "reference_panel", verbose = FALSE)
+p_cov2 <- tso_design(tp_bank, n = n_train, criterion = "coverage", verbose = FALSE)
+c(reference_panel = p_core$coverage$frac_020, coverage = p_cov2$coverage$frac_020)
+chk("coverage design reaches most lines with a relative >= 0.20", p_cov2$coverage$frac_020 > 0.5)
+```
+
+## Rice, multi-location: sparse multi-environment testing
+
+Every line is tested in one site only (`max_per_line = 1`), the noisy Site2 gets fewer plots,
+and every site keeps at least 20.
+
+```{r met-design}
+p_met <- tso_design(tp_met, n = 3 * n_train, target = targets, max_per_line = 1, min_per_env = 20,
+                    verbose = FALSE)
+p_met
+chk("every line is tested in one site only", all(table(p_met$selected$line_id) == 1))
+chk("every site gets at least 20 lines", all(p_met$envs$allocation >= 20))
+chk("target lines are never tested", !any(p_met$selected$line_id %in% targets))
+p_met_def <- tso_design(tp_met, n = 3 * n_train, target = targets, verbose = FALSE)
+chk("without constraints every site is still opened", all(p_met_def$envs$allocation >= 2))
+```
+
+```{r met-plot, fig.height = 4.5}
+tso_plot(p_met, "met_allocation")
+```
+
+## Wheat quality: multi-trait index (which trait on which line)
+
+```{r multitrait}
+p_mt <- tso_design(tp_mt, budget = 40 * n_train, index = c(yield = 1, protein = 0.4, ndvi = 0),
+                   verbose = FALSE)
+p_mt$traits
+chk("multi-trait budget is respected", p_mt$spent <= 40 * n_train + 1e-8)
+```
+
+## Very large panels
+
+```{r large}
+big <- tso_simulate_panel(n = 3000, markers = 1500, seed = 5)
+p_big <- timed(tso_design_large(big, n = 200, rank = 200, verbose = FALSE))
+p_big
+chk("large-panel engine returns 200 lines", nrow(p_big$selected) == 200)
+small <- tso_simulate_panel(n = 150, markers = 300, seed = 9)
+lr <- tso_design_large(small, n = 30, h2 = 0.5, rank = 300, verbose = FALSE)
+dn <- tso_design(small, n = 30, h2 = 0.5, search = "greedy", stratify = "none", verbose = FALSE)
+chk("with exact features the large engine picks the same lines as the dense one",
+    setequal(lr$selected$id, dn$selected$id))
+```
+
+\newpage
+
+# Major genes and haplotypes
+
+```{r s10, include = FALSE}
+section <- "10 Major genes"
+```
+
+## Scanning your phenotypes
+
+```{r pheno}
+ph <- utils::read.csv(pheno_file)
+y <- stats::setNames(ph$y, as.character(ph$id))
+chk("phenotype IDs match the genotypes", mean(names(y) %in% ids) > 0.9,
+    paste0(round(100 * mean(names(y) %in% ids)), "% matched"))
+scan <- tso_major_scan(g, y)
+```
+
+```{r scan-plot, fig.height = 3.6}
+tso_plot(scan)
+```
+
+## A trait with a planted major gene
+
+To check that the machinery works, a trait with one major QTL (40% of the genetic variance)
+is simulated on your genotypes:
+
+```{r scan-planted}
+tr_m <- tso_simulate_trait(g, h2 = 0.6, n_qtl = 80, major = 1, major_share = 0.4, seed = 11)
+scan_m <- tso_major_scan(g, stats::setNames(tr_m$y, tr_m$id), verbose = FALSE)
+scan_m
+chk("the scan finds the planted major QTL", attr(tr_m, "major") %in% scan_m$leads$marker)
+hp <- tso_haplotypes(g, around = attr(tr_m, "major"), window = 2)
+hp
+chk("haplotype block built around the major QTL", length(hp$blocks) == 1)
+```
+
+## Marker effects you already have
+
+No phenotypes are needed when marker effects are known: from a GWAS, a QTL study, a BayesB
+model or cloned genes. `tso_major_effects()` matches them to your markers and alleles and
+computes each locus's share of genetic variance in your panel.
+
+```{r effects-file}
+if (nzchar(eff_file)) {
+  me <- tso_major_effects(g, eff_file)
+  chk("marker effects matched to the genotypes", me$n_markers > 0,
+      paste0(me$n_markers, " of ", me$n_given, " markers"))
+  chk("each lead's share is a proportion", all(is.na(me$leads$share_region)) ||
+        all(me$leads$share_region >= 0 & me$leads$share_region <= 1))
+  if (nrow(me$leads)) {
+    tp_me <- tso_data(g, major = me, qc = FALSE, verbose = FALSE)
+    chk("tso_data() protects the loci from the effects", setequal(tp_me$major$loci, me$leads$marker))
+  }
+} else cat("No marker-effects file given (params$effects).\n")
+```
+
+```{r effects-plot, fig.height = 3.2, eval = nzchar(eff_file)}
+tso_plot(me)
+```
+
+The same function reads GWAS summary statistics. The scan of the planted trait stands in for a
+published GWAS; the planted locus (40% of the genetic variance) must be found and recognised as
+major. Its share will be too high: a GWAS effect estimated on the same few hundred lines is
+inflated by the winner's curse (the Beavis effect), so the share from a small study is an upper
+bound. Effects from a large published study, or the scan's joint estimate (`share_joint`), are
+better guides to the size.
+
+```{r effects-gwas}
+gw <- data.frame(snp = scan_m$table$marker, beta = scan_m$table$effect, pval = 10^-scan_m$table$log10p)
+me_gw <- tso_major_effects(g, gw, var_g = stats::var(tr_m$g))
+chk("GWAS effects find the planted major QTL", attr(tr_m, "major") %in% me_gw$leads$marker)
+sh_gw <- me_gw$leads$share_genetic[me_gw$leads$marker == attr(tr_m, "major")][1]
+chk("the planted QTL is recognised as a major locus (share above 20%)", isTRUE(sh_gw > 0.2),
+    paste0(round(100 * sh_gw), "% from the GWAS effect; scan's joint estimate ",
+           round(100 * scan_m$leads$share_joint[scan_m$leads$marker == attr(tr_m, "major")][1]), "%"))
+```
+
+## Protecting the alleles in the training set
+
+```{r protect}
+tp_major <- tso_data(g, major = attr(tr_m, "major"), min_carriers = 3, qc = FALSE, verbose = FALSE)
+p_major <- tso_design(tp_major, n = n_train, target = targets, verbose = FALSE)
+p_major$major
+chk("every allele class carried by targets has the required carriers",
+    all(p_major$major$carriers_training >= p_major$major$required))
+tp_fixed <- tso_data(g, major = list(markers = attr(tr_m, "major"), haplotypes = hp),
+                     major_model = "fixed", qc = FALSE, verbose = FALSE)
+p_fixed <- tso_design(tp_fixed, n = n_train, target = targets, verbose = FALSE)
+chk("the fixed model uses the major loci as fixed effects", !is.null(p_fixed$spec$fixed_columns))
+```
+
+```{r protect-plot, fig.height = 3}
+tso_plot(p_major, "major")
+```
+
+## Genome-wide allele and haplotype coverage
+
+```{r allele-coverage}
+unlist(plan_t$alleles[c("frac", "n_missing_markers")])
+plan_t$alleles$haplotypes$frac
+chk("allele coverage is a proportion", plan_t$alleles$frac >= 0 && plan_t$alleles$frac <= 1)
+```
+
+## Haplotype blocks, the haplotype kernel and haplotype coverage
+
+Blocks of adjacent markers in LD (or fixed tiles, or windows in kb) define haplotypes. Your
+material is `r if (all(g$dosage %in% c(0, g$ploidy))) "homozygous, so the marker strings are haplotypes" else if (isTRUE(g$phased)) "phased, so each chromosome copy gives a haplotype" else "heterozygous and unphased, so blocks hold local multi-locus genotypes (phase the file for true haplotypes)"`.
+
+```{r haplotypes}
+hp_ld <- tso_haplotypes(g, method = "ld")
+hp_fx <- tso_haplotypes(g, method = "fixed", window = 2)
+hp_ld
+chk("LD blocks use every marker exactly once", setequal(unlist(hp_ld$blocks), colnames(g$dosage)) &&
+      !anyDuplicated(unlist(hp_ld$blocks)))
+chk("haplotype frequencies sum to 1 in every block", all(abs(vapply(hp_fx$freq, sum, 1) - 1) < 1e-10))
+hp1 <- tso_haplotypes(g, method = "fixed", window = 0, min_freq = 0)
+H1 <- TSOpt:::.kernel_hap(hp1)
+g1 <- g                                            # haplotypes use rounded dosages (homozygous lines: 0 or ploidy)
+g1$dosage <- if (hp1$kind == "homozygous") g$ploidy * round(round(g$dosage) / g$ploidy) else round(g$dosage)
+A1 <- tso_kinship(g1, base_freq = colMeans(g1$dosage) / g$ploidy, ridge = 0)
+chk("single-marker blocks reproduce the VanRaden matrix exactly", max(abs(H1 - A1 / mean(diag(A1)))) < 1e-8)
+tp_h <- tso_data(g, haplotypes = hp_fx, qc = FALSE, verbose = FALSE)
+p_def <- tso_design(tp_h, n = n_train, target = targets, verbose = FALSE)
+p_hap <- tso_design(tp_h, n = n_train, target = targets, criterion = "haplotype", verbose = FALSE)
+cov_tab <- rbind(default = unlist(p_def$alleles$haplotypes[c("frac", "frac_copies", "frac2")]),
+                 haplotype = unlist(p_hap$alleles$haplotypes[c("frac", "frac_copies", "frac2")]))
+round(cov_tab, 3)
+chk("the haplotype criterion covers at least as many target haplotype copies",
+    cov_tab["haplotype", "frac_copies"] >= cov_tab["default", "frac_copies"] - 1e-12)
+chk("the per-block report has one row per block", nrow(p_hap$alleles$haplotypes$per_block) == length(hp_fx$blocks))
+```
+
+```{r haplotypes-plot, fig.height = 3.4}
+tso_plot(p_def, "haplotypes")
+```
+
+\newpage
+
+# Checking a plan
+
+```{r s11, include = FALSE}
+section <- "11 Check"
+```
+
+## Why this set: tso_explain()
+
+```{r explain}
+tso_explain(plan_t, steps = FALSE)
+```
+
+## Any set, any criterion: tso_score()
+
+```{r score}
+set.seed(2); colleague <- sample(setdiff(ids, targets), n_train)
+rbind(colleague = tso_score(tp, train = colleague, target = targets),
+      optimised = tso_score(tp, train = plan_t$selected$id, target = targets))
+chk("the optimised set scores higher than a random colleague's set",
+    tso_score(tp, train = plan_t$selected$id, target = targets)[["cdmean"]] >
+      tso_score(tp, train = colleague, target = targets)[["cdmean"]])
+```
+
+## Against the alternatives: tso_compare()
+
+```{r compare}
+cmp <- tso_compare(plan_t, others = list(colleague = colleague), n_random = 50)
+cmp
+chk("the plan is at least as good as random sampling",
+    cmp$table$cdmean[cmp$table$method == "optimised"] >= cmp$table$cdmean[cmp$table$method == "random"])
+```
+
+```{r compare-plot, fig.height = 3.2}
+tso_plot(cmp)
+```
+
+## Top-k identification: tso_topk()
+
+```{r topk}
+tk <- tso_topk(plan_t, top = 0.1, n_sim = 300)
+tk
+chk("top-k analysis reports plan and random-set metrics", is.data.frame(tk$summary) && nrow(tk$summary) > 0)
+```
+
+```{r topk-plot, fig.height = 3.6}
+tso_plot(tk)
+```
+
+## Accuracy against diversity: tso_pareto()
+
+```{r pareto}
+fr <- tso_pareto(tp, n = n_train, objectives = c("cdmean", "coancestry"), target = targets,
+                 pop = 50, generations = 50, verbose = FALSE)
+fr
+knee <- tso_pareto_pick(fr, "knee")
+chk("the knee set has n_train lines", length(knee) == n_train)
+chk("the front has more than one set", nrow(fr$front) > 1)
+```
+
+```{r pareto-plot, fig.height = 4}
+tso_plot(fr)
+```
+
+\newpage
+
+# After the season: evaluate the plan
+
+```{r s12, include = FALSE}
+section <- "12 Evaluate"
+```
+
+Once the training set is phenotyped, `tso_evaluate()` fits GBLUP on it and reports how well it
+predicted the targets: predictive ability, rank correlation, NDCG, realised gain from selecting
+the top 10% and the bias slope. With true genetic values (simulations) the metrics are computed
+against the truth.
+
+```{r evaluate}
+tv <- if (nzchar(truth_file) && file.exists(truth_file)) {
+  d <- utils::read.csv(truth_file); stats::setNames(d$g, as.character(d$id)) } else NULL
+ev <- tso_evaluate(plan_t, y, truth = tv, h2 = params$h2)
+ev
+chk("predictive ability is a correlation", abs(ev$predictive_ability) <= 1)
+chk("evaluation never scores the training lines", !any(ev$predictions$id %in% plan_t$selected$id))
+set.seed(3)
+rnd <- sample(setdiff(ids, targets), n_train)
+ev_r <- tso_evaluate(tp, y, train = rnd, target = targets, truth = tv, h2 = params$h2)
+c(optimised = ev$predictive_ability, random = ev_r$predictive_ability)
+```
+
+```{r evaluate-plot, fig.height = 3.8}
+tso_plot(ev)
+```
+
+## Real accuracy of every criterion
+
+Section 6 compared the criteria on an expected quantity. Here each criterion's training set is
+phenotyped (the phenotypes are in `y`) and GBLUP predicts the targets. Against the true genetic
+values when they are known (simulated data), otherwise against the targets' own phenotypes.
+This is the measure that matters to a breeder.
+
+```{r criteria-realised}
+real <- do.call(rbind, lapply(names(crit_sets), function(cr) {
+  e <- tso_evaluate(tp, y, train = crit_sets[[cr]], target = targets, truth = tv, h2 = params$h2)
+  data.frame(criterion = cr, predictive_ability = e$predictive_ability, rank_corr = e$spearman,
+             ndcg = e$ndcg, realised_gain_sd = e$realised_gain)
+}))
+real <- real[order(-real$predictive_ability), ]
+knitr::kable(real, digits = 3, row.names = FALSE)
+chk("every criterion's set can be evaluated", nrow(real) == length(crit_sets))
+set.seed(5)
+rand_pa <- mean(replicate(10, tso_evaluate(tp, y, train = sample(setdiff(ids, targets), n_train),
+                                           target = targets, truth = tv, h2 = params$h2)$predictive_ability))
+cat("mean predictive ability of 10 random training sets:", round(rand_pa, 3), "\n")
+chk("the default cdmean predicts at least as well as the average random set",
+    real$predictive_ability[real$criterion == "cdmean"] >= rand_pa - 0.02)
+```
+
+What to look at: one panel and one trait give a noisy ranking (a single random set can be
+lucky), which is why the package default rests on a benchmark over six panels and 33
+scenarios. On your own data, a criterion near the bottom of this table and near the top of the
+Section 6 table has been optimising the wrong quantity for this trait.
+
+```{r criteria-realised-plot, fig.height = 4.2}
+ggplot(real, aes(stats::reorder(criterion, predictive_ability), predictive_ability)) +
+  geom_col(fill = tso_colors()[["training"]]) + coord_flip() + tso_theme() +
+  labs(x = NULL, y = "predictive ability on the targets", title = "Realised accuracy of every criterion")
+```
+
+## Unreliable heritability estimates
+
+Without a heritability, REML estimates it from the training set. With few lines the estimate
+can hit its boundary, and TSOpt then warns that the bias slope and realised gain are unreliable:
+
+```{r evaluate-reml}
+ev_reml <- withCallingHandlers(tso_evaluate(plan_t, y, truth = tv), warning = function(w) {
+  cat("TSOpt warns:", substr(conditionMessage(w), 1, 100), "...\n"); invokeRestart("muffleWarning") })
+ev_reml$h2_used
+```
+
+\newpage
+
+# Across stages, seasons and generations
+
+```{r s13, include = FALSE}
+section <- "13 Seasons"
+```
+
+## Second stage: tso_next_batch()
+
+```{r next-batch}
+y1 <- y[intersect(plan$selected$id, names(y))]
+nb <- tso_next_batch(plan, y1, n = 25, select_top = 0.1, h2 = params$h2)
+nb
+chk("next batch has 25 plots", nrow(nb$selected) == 25)
+chk("posterior probabilities of selection lie in [0, 1]",
+    all(nb$posterior$p_top >= 0 & nb$posterior$p_top <= 1, na.rm = TRUE))
+```
+
+```{r next-batch-plot, fig.height = 3.8}
+tso_plot(nb)
+```
+
+## Next season: tso_update()
+
+```{r update}
+p_next <- tso_update(plan, data = tp, n = 40, history_weight = 0.8, verbose = FALSE)
+p_next$spec$history
+chk("last season's lines become history, not new plots", !any(plan$selected$id %in% p_next$selected$id))
+```
+
+## Choosing parents: tso_contribution()
+
+```{r ocs}
+ebv <- stats::setNames(ev$predictions$predicted, ev$predictions$id)
+ocs <- tso_contribution(ebv, tp$K_lines[names(ebv), names(ebv)], delta_F = 0.01)
+ocs
+chk("contributions sum to 1", abs(sum(ocs$contributions$contribution) - 1) < 1e-8)
+chk("contributions are non-negative", all(ocs$contributions$contribution >= -1e-12))
+chk("the coancestry limit is respected", ocs$coancestry <= ocs$limit + 1e-8)
+```
+
+```{r ocs-plot, fig.height = 3.6}
+tso_plot(ocs)
+```
+
+## The long term: tso_simulate()
+
+```{r simulate}
+sim <- tso_simulate(strategies = list(cdmean = "cdmean", random = "random"), cycles = 3, reps = 1,
+                    n_candidates = 120, n_train = 40, n_parents = 12, markers = 500, verbose = FALSE)
+sim
+chk("the simulation reports every cycle and strategy", nrow(sim$results) == 3 * 2)
+```
+
+```{r simulate-plot, fig.height = 4.6}
+tso_plot(sim)
+```
+
+\newpage
+
+# Decisions around the design
+
+```{r s135, include = FALSE}
+section <- "13b Decisions around the design"
+```
+
+## Traits and environments together, hedged over uncertain correlations
+
+A unit is now one trait on one line in one environment. The design hedges the index over
+uncertain heritabilities and genetic correlations, and prints the CDmean under every scenario.
+
+```{r mt-env}
+g150 <- g; g150$dosage <- g$dosage[seq_len(min(150, N)), ]
+tp_mte <- tso_data(g150, traits = c("yield", "protein", "ndvi"), trait_h2 = c(0.3, 0.5, 0.6),
+                   gcor = matrix(c(1, .5, .6, .5, 1, .3, .6, .3, 1), 3),
+                   trait_cost = c(yield = 20, protein = 35, ndvi = 0.5), plot_cost = 10,
+                   envs = c("Site1", "Site2"), env_cor = matrix(c(1, .6, .6, 1), 2),
+                   env_noise = c(Site1 = 1, Site2 = 2), qc = FALSE, verbose = FALSE)
+p_mte <- tso_design(tp_mte, budget = 2500, index = c(yield = 1, protein = 0.4), verbose = FALSE)
+p_mte
+table(p_mte$selected$trait, p_mte$selected$env)
+chk("line x trait x environment units", nrow(tp_mte$units) == nrow(g150$dosage) * 6)
+chk("the multi-trait budget across sites is respected", p_mte$spent <= 2500 + 1e-8)
+chk("the robust multi-trait design reports every scenario", length(p_mte$value$cd_by_scenario) >= 4)
+chk("every trait is measured at least twice (trait means are estimable)",
+    all(table(factor(p_mte$selected$trait, levels = c("yield", "protein", "ndvi"))) >= 2))
+```
+
+## What is each trait worth?
+
+```{r trait-value}
+tp_tv <- tso_data(g, traits = c("yield", "protein", "ndvi"), trait_h2 = c(0.3, 0.5, 0.6),
+                  gcor = matrix(c(1, .5, .6, .5, 1, .3, .6, .3, 1), 3),
+                  trait_cost = c(yield = 20, protein = 35, ndvi = 0.5), plot_cost = 10, qc = FALSE,
+                  verbose = FALSE)
+p_tv <- tso_design(tp_tv, budget = 3000, index = c(yield = 1, protein = 0.4), verbose = FALSE)
+tv <- tso_trait_value(p_tv)
+tv
+chk("budget shares sum to 1", abs(sum(tv$table$share_of_budget) - 1) < 1e-8)
+chk("the reference trait has exchange rate 1", abs(tv$table$exchange_rate[tv$table$trait == "yield"] - 1) < 1e-8)
+```
+
+```{r trait-value-plot, fig.height = 3}
+tso_plot(tv)
+```
+
+## The value of each plot
+
+```{r plot-value}
+knitr::kable(utils::head(plan_t$selected[order(-plan_t$selected$value_pct), c("id", "value_pct")], 5),
+             digits = 2, row.names = FALSE)
+K_t <- tp$K; Ke_t <- K_t + 1e3 * mean(diag(K_t)); tix <- match(targets, ids)
+ctr_t <- TSOpt:::.contrasts(K_t, tix, "centered")
+s2_t <- rep(max((1 - p_h$spec$h2) / p_h$spec$h2, 1e-6), N)
+cdv <- function(S) { st <- TSOpt:::.engine_init(Ke_t, ctr_t); for (j in S) TSOpt:::.engine_add(st, j, s2_t[j])
+  TSOpt:::.crit_value("cdmean", st) }
+S_h <- p_h$index$selected
+chk("plot value equals the brute-force loss of dropping the plot (first 5 plots)",
+    max(abs(sapply(1:5, function(i) cdv(S_h) - cdv(S_h[-i])) - p_h$selected$value[1:5])) < 1e-8)
+```
+
+```{r plot-value-plot, fig.height = 4.5}
+tso_plot(plan_t, "value")
+```
+
+## How sure is the advantage? tso_uncertainty()
+
+```{r uncertainty}
+unc <- tso_uncertainty(plan_t, B = 30)
+unc
+chk("the uncertainty interval contains the estimate",
+    all(unc$intervals$lower <= unc$intervals$estimate & unc$intervals$estimate <= unc$intervals$upper))
+```
+
+```{r uncertainty-plot, fig.height = 3}
+tso_plot(unc)
+```
+
+## How many plots pay off? tso_economics()
+
+```{r economics}
+eco <- tso_economics(tp, cost_per_plot = 40, value_per_sd = 5000, select_top = 0.1, target = targets)
+eco
+chk("the economic optimum maximises net value on the curve",
+    abs(eco$optimum$opt$net - max(eco$curve$net_opt, na.rm = TRUE)) < 1e-6)
+```
+
+```{r economics-plot, fig.height = 3.4}
+tso_plot(eco)
+```
+
+## Laying out the field: tso_layout()
+
+```{r layout}
+lay <- tso_layout(plan_t, rows = 10, cols = ceiling((n_train + 6) / 10) + 1, blocks = 2,
+                  checks = ids[1:2], check_reps = 1, prep = 0.1)
+lay
+fld <- as.data.frame(lay)
+chk("every training line is planted", all(plan_t$selected$id %in% fld$id))
+chk("blocking never raises the CDmean", lay$metrics$cd_blocks <= lay$metrics$cd_no_blocks + 1e-8)
+```
+
+```{r layout-plot, fig.height = 4}
+tso_plot(lay)
+```
+
+## Whom to genotype, and hedging over the model of gene action
+
+```{r genotype-kernels}
+gs <- tso_genotype_set(tp, n = 20)
+gs
+chk("the genotyped set beats random sets on coverage",
+    gs$comparison$mean_best[1] >= gs$comparison$mean_best[nrow(gs$comparison)] - 1e-8 ||
+      gs$percentile >= 0.5)
+p_kern <- tso_design(tp, n = n_train, target = targets, kernels = c("additive", "gaussian"), h2 = params$h2,
+                     verbose = FALSE)
+round(p_kern$value$cd_by_scenario, 4)
+chk("the kernel-robust design reports every kernel", length(p_kern$value$cd_by_scenario) == 2)
+```
+
+## Training in one programme, predicting another: tso_transfer()
+
+```{r transfer}
+if (!is.null(groups) && length(unique(tp$units$group)) >= 2) {
+  grp_names <- sort(unique(tp$units$group))
+  tr_out <- tso_transfer(tp, from = grp_names[-length(grp_names)], to = grp_names[length(grp_names)],
+                         n = n_train, n_local = 10)
+  tr_out
+  chk("transferability is a ratio between 0 and 1", tr_out$transferability > 0 && tr_out$transferability <= 1.05)
+} else cat("No groups: transfer skipped.\n")
+```
+
+## Straight from a breeding database (BrAPI)
+
+With a real server you connect and read genotypes and phenotypes directly:
+
+```{r brapi-live, eval = FALSE}
+con <- tso_brapi_connect("https://my-breedbase.org", token = Sys.getenv("BRAPI_TOKEN"))
+tso_brapi_studies(con)
+g_db <- tso_brapi_geno(con, variant_set = "vs1")
+y_db <- tso_brapi_trait(con, study = "trial2025", trait = "grain yield")
+tp_db <- tso_data(g_db)
+```
+
+Here the connector is checked offline against the recorded BrAPI responses that ship with the
+package's tests, when the repository is available:
+
+```{r brapi-offline}
+fx <- normalizePath(file.path("..", "..", "tests", "testthat", "fixtures", "brapi"), mustWork = FALSE)
+if (dir.exists(fx)) {
+  con <- tso_brapi_connect(paste0("file://", fx), verbose = FALSE)
+  g_db <- tso_brapi_geno(con, verbose = FALSE)
+  g_db
+  chk("BrAPI genotypes are read into a tso_geno", inherits(g_db, "tso_geno") && nrow(g_db$dosage) > 0)
+} else cat("BrAPI fixtures not found (run from the repository): offline check skipped.\n")
+```
+
+\newpage
+
+# Programme planning and hand-over
+
+```{r s-prog, include = FALSE}
+section <- "Programme"
+```
+
+## Variance components from your phenotypes: tso_variance()
+
+```{r prog-variance}
+v_y <- tso_variance(tp, data.frame(id = names(y), y = y))
+v_y
+chk("REML converged", isTRUE(v_y$converged))
+chk("the heritability is a proportion", all(v_y$h2 > 0 & v_y$h2 < 1))
+chk("the same estimate as the GBLUP fit", abs(v_y$h2 - TSOpt:::.gblup(tp$K_lines, match(names(y)[names(y) %in% rownames(tp$K_lines)],
+    rownames(tp$K_lines)), y[names(y) %in% rownames(tp$K_lines)])$h2) < 0.01)
+tp_v <- tso_data(g, variance = v_y, qc = FALSE, verbose = FALSE)
+chk("robust designs use the estimated heritability grid", length(tp_v$h2_grid) >= 1 &&
+      all(tp_v$h2_grid > 0 & tp_v$h2_grid < 1))
+```
+
+## Forward validation: tso_backtest()
+
+```{r prog-backtest}
+bt_hist <- if (nzchar(params$history)) utils::read.csv(params$history, stringsAsFactors = FALSE) else NULL
+if (!is.null(bt_hist)) {
+  bt <- tso_backtest(tp, bt_hist, n = 0.2, traits = params$history_trait, methods = c("random", "default", "kinship"),
+                     n_random = 3, verbose = FALSE)
+} else {
+  hs <- tso_simulate_cycles(cycles = 4, n_candidates = 100, n_crosses = 10, n_parents = 10, markers = 500, seed = 4)
+  bt <- tso_backtest(hs$geno, hs$pheno, n = 0.25, methods = c("random", "default", "kinship"), n_random = 3,
+                     verbose = FALSE)
+}
+bt
+chk("every test cycle and method is scored", nrow(bt$results) == length(unique(bt$results$cycle)) * 3)
+chk("predictive abilities are correlations", all(abs(bt$results$pa) <= 1))
+```
+
+```{r prog-backtest-plot, fig.height = 3.2}
+tso_plot(bt)
+```
+
+## The season across stages: tso_season()
+
+```{r prog-season}
+sea <- tso_season(tp, budget = round(0.6 * N), n1 = unique(round(N * c(0.1, 0.2, 0.3))),
+                  k1 = unique(pmax(5, round(N * c(0.03, 0.06)))), sites2 = 1:3, reps = 10, verbose = FALSE)
+sea
+chk("every allocation fits the budget", all(sea$table$cost <= round(0.6 * N)))
+chk("the best allocation has the highest expected gain", sea$best$gain == max(sea$table$gain))
+```
+
+## Which crosses to make: tso_crosses()
+
+```{r prog-crosses}
+has_map <- !is.null(g$map$cM) || params$cm_per_mb > 0
+if (has_map) {
+  parents <- names(sort(y[names(y) %in% ids], decreasing = TRUE))[1:10]
+  cr <- tso_crosses(g, parents = parents, pheno = y, cM_per_Mb = if (params$cm_per_mb > 0) params$cm_per_mb else NULL)
+  cr
+  chk("45 crosses among 10 parents", nrow(cr$table) == 45)
+  i10 <- stats::dnorm(stats::qnorm(0.9)) / 0.1
+  chk("usefulness = mean + i x SD", max(abs(cr$table$usefulness - cr$table$mean - i10 * cr$table$sd)) < 1e-10)
+} else cat("No genetic map: give params$cm_per_mb (map density of your crop) to predict crosses.\n")
+```
+
+## Genotyping, imputation and plots: tso_imputation_plan()
+
+```{r prog-imputation}
+M <- ncol(g$dosage)
+ipl <- tso_imputation_plan(tp, budget = 40 * N, cost_hd = 40, cost_ld = 12, plot_cost = 25,
+                           n_ref = unique(round(N * c(0.1, 0.25))), ld_markers = unique(round(M * c(0.05, 0.2))))
+ipl
+chk("every plan fits the budget", all(ipl$table$genotyping + 25 * ipl$table$plots <= 40 * N))
+chk("realised reliability equals the expected one when nothing is imputed",
+    with(ipl$table[ipl$table$plan == "all high density", , drop = FALSE],
+         !length(reliability) || abs(reliability - cdmean_expected) < 1e-10))
+```
+
+## Testcrosses and the factorised form on your panel
+
+```{r prog-testcross}
+tcd <- tso_data(g, system = "testcross", testers = ids[1:2], qc = FALSE, verbose = FALSE)
+chk("testcross units are lines x testers", nrow(tcd$units) == (N - 2) * 2)
+ptc <- tso_design(tcd, n = min(40, N - 2), max_per_line = 1, verbose = FALSE)
+chk("the testcross plan predicts GCA", identical(ptc$spec$value, "gca"))
+sub <- ids[seq_len(min(80, N))]; gs <- g; gs$dosage <- g$dosage[sub, ]
+e0 <- tso_data(gs, envs = c("E1", "E2", "E3"), qc = FALSE, verbose = FALSE)
+e1 <- tso_data(gs, envs = c("E1", "E2", "E3"), qc = FALSE, implicit = TRUE, verbose = FALSE)
+pe0 <- tso_design(e0, n = 30, h2 = 0.5, verbose = FALSE); pe1 <- tso_design(e1, n = 30, h2 = 0.5, verbose = FALSE)
+chk("the factorised form gives the same design as the dense one",
+    identical(pe0$selected$id, pe1$selected$id) && abs(pe0$value$cdmean - pe1$value$cdmean) < 1e-10)
+```
+
+## Omics profiles: tso_omics_kernel() and tso_omics_plan()
+
+```{r prog-omics}
+if (nzchar(params$omics)) {
+  ok_all <- tso_omics_kernel(params$omics, type = params$omics_type, geno = tp)
+} else {
+  om_sim <- tso_simulate_omics(g, features = 100, seed = 3)       # simulated profiles of your lines
+  ok_all <- tso_omics_kernel(om_sim$profiles, geno = tp)
+}
+ok_all
+chk("the omics kernel has mean diagonal 1", abs(mean(diag(ok_all$K)) - 1) < 1e-10)
+chk("the omics kernel is positive semi-definite", min(eigen(ok_all$K, TRUE, TRUE)$values) > -1e-8)
+prof <- intersect(ok_all$lines, ids)
+half <- prof[seq_len(max(3, floor(length(prof) / 2)))]
+ok_half <- ok_all; ok_half$K <- ok_all$K[half, half]; ok_half$lines <- half
+ok_half$blend <- 0          # no genomic blend (default 5%), so the profiled block is the measured one up to scale
+tp_om <- tso_data(g, kernels = ok_half, qc = FALSE, verbose = FALSE)
+chk("lines without a profile are kept (predicted from genomics)", nrow(tp_om$K) == N)
+off <- upper.tri(ok_half$K)
+chk("the profiled block keeps the measured relationships",
+    stats::cor(tp_om$kernels$K[[ok_half$name]][half, half][off], ok_half$K[off]) > 0.9999)
+pl_om <- tso_design(tp_om, n = min(params$n_train, N - 10), verbose = FALSE)
+chk("the omics-aware design reports genetic + omics values",
+    any(grepl("genetic \\+ omics", utils::capture.output(print(pl_om)))))
+if (length(prof) >= 40) {
+  opl <- tso_omics_plan(tp, ok_all, budget = 30 * length(prof), profile_cost = 2, plot_cost = 40,
+                        n_profile = unique(round(length(prof) * c(0.25, 0.5))), strategy = c("coverage", "targets"))
+  opl
+  chk("profiling everyone: the realised reliability is the expected one",
+      with(opl$table[opl$table$strategy == "all", , drop = FALSE], !length(realised) || abs(realised - expected) < 1e-10))
+} else cat("Fewer than 40 profiled lines: no profiling plan.\n")
+```
+
+## To the field and the database
+
+```{r prog-export}
+fb <- tso_export_field(plan_t, format = "fieldbook", trial = "WALK")
+chk("the Field Book file has one row per plot", nrow(fb) == nrow(plan_t$selected))
+chk("FielDHub entries are unique", !anyDuplicated(tso_export_field(plan_t, format = "fieldhub")$NAME))
+chk("the plan's manifest matches its data", all(tso_verify(plan_t, tp)$match))
+js <- tempfile(fileext = ".json"); tso_plan_json(plan_t, js)
+chk("the plan file reads back", identical(jsonlite::fromJSON(js)$selected$id, plan_t$selected$id))
+code <- tso_analysis_script(plan_t, engine = "sommer")
+chk("the analysis script parses", !inherits(try(parse(text = code), silent = TRUE), "try-error"))
+```
+
+\newpage
+
+# Figures, export and reports
+
+```{r s14, include = FALSE}
+section <- "14 Outputs"
+```
+
+## Every plan figure
+
+```{r fig-types}
+types <- c("summary", "pca", "divide", "coverage", "baseline", "search", "kinship")
+made <- sapply(types, function(ty) inherits(tso_plot(plan_t, ty), c("ggplot", "patchwork")))
+made
+chk("every plan figure type is drawn", all(made))
+```
+
+```{r fig-summary, fig.height = 6.5}
+tso_plot(plan_t)
+```
+
+```{r fig-divide-coverage, fig.height = 3.4}
+tso_plot(plan_t, "divide")
+tso_plot(plan_t, "coverage")
+```
+
+## Journal-ready files, the field list and the report
+
+```{r outputs}
+f <- tso_save_figure(tso_plot(plan_t, "pca"), file.path(out, "fig_pca"), journal = "g3",
+                     width = "single", format = c("pdf", "png", "tiff", "svg"), dpi = 300)
+basename(f)
+chk("all four figure formats were written", all(file.exists(f)))
+chk("unknown journal presets are refused",
+    inherits(try(tso_save_figure(tso_plot(plan_t, "pca"), file.path(out, "x"), journal = "nope"),
+                 silent = TRUE), "try-error"))
+csv <- tso_export(plan_t, file.path(out, "plan.csv"))
+chk("the field list has one row per training line", nrow(utils::read.csv(file.path(out, "plan.csv"))) == n_train)
+rep_file <- tso_report(plan_t, file.path(out, "report.html"), comparison = cmp)
+chk("the HTML report is written", file.exists(rep_file) && file.size(rep_file) > 10000)
+```
+
+The theme and colours in your own figures:
+
+```{r own-figure, fig.height = 3}
+ggplot(plan_t$selected, aes(reliability)) +
+  geom_histogram(bins = 20, fill = tso_colors()[["training"]]) + tso_theme() +
+  labs(title = "Expected reliability of the selected lines", x = "reliability", y = "lines")
+```
+
+\newpage
+
+# Robustness: inputs that should fail clearly
+
+```{r s15, include = FALSE}
+section <- "15 Robustness"
+```
+
+A good tool fails loudly and clearly on impossible requests instead of returning something
+misleading. Each line below must produce an error or a warning.
+
+```{r robustness}
+err <- function(expr) inherits(try(expr, silent = TRUE), "try-error")
+wrn <- function(expr) { w <- FALSE; withCallingHandlers(try(expr, silent = TRUE),
+  warning = function(x) { w <<- TRUE; invokeRestart("muffleWarning") }); w }
+chk("n larger than the pool is refused", err(tso_design(tp, n = N + 1, verbose = FALSE)))
+chk("neither n nor budget is refused", err(tso_design(tp, verbose = FALSE)))
+chk("unknown target IDs are refused", err(tso_design(tp, n = 10, target = "no_such_line", verbose = FALSE)))
+chk("must_include larger than n is refused", err(tso_design(tp, n = 3, must_include = ids[1:6], verbose = FALSE)))
+chk("an unknown criterion is refused", err(tso_design(tp, n = 10, criterion = "magic", verbose = FALSE)))
+chk("h2 outside (0, 1] is refused", err(tso_design(tp, n = 10, h2 = 1.5, verbose = FALSE)))
+chk("a constant custom criterion is refused",
+    err(tso_design(tp, n = 10, criterion = function(i, d) 1, iterations = 10, verbose = FALSE)))
+one_group <- if (!is.null(groups)) ids[tp$units$group == tp$units$group[1]] else NULL
+if (length(one_group) > 5)
+  chk("CDpop with targets from one group gives a clear error",
+      err(tso_design(tp, n = 10, target = one_group[1:5], goal = "families", verbose = FALSE)))
+chk("a single target works (no crash)",
+    !err(tso_design(tp, n = 10, target = ids[1], verbose = FALSE)))
+if (!is.null(groups)) {
+  lev <- names(table(tp$units$group))
+  chk("an unmeetable quota warns instead of silently shrinking",
+      wrn(tso_design(tp, n = 3 * length(lev) + 10, group_quota = setNames(rep(3, length(lev)), lev),
+                     verbose = FALSE)))
+}
+chk("history and must_include overlap is resolved (no duplicates)",
+    !anyDuplicated(tso_design(tp, n = 10, history = ids[1:5], must_include = ids[3:7],
+                              verbose = FALSE)$index$selected))
+```
+
+\newpage
+
+# Scorecard
+
+```{r s16, include = FALSE}
+section <- "16 Scorecard"
+```
+
+```{r scorecard}
+summary_tab <- aggregate(result ~ section, checks, function(r) sprintf("%d / %d", sum(r == "PASS"), length(r)))
+names(summary_tab)[2] <- "passed"
+knitr::kable(summary_tab, row.names = FALSE)
+cat("\nTotal:", sum(checks$result == "PASS"), "of", nrow(checks), "checks passed.\n")
+fails <- checks[checks$result == "FAIL", ]
+if (nrow(fails)) knitr::kable(fails, row.names = FALSE) else cat("No check failed: nothing looks odd.\n")
+```
+
+Every check, in order:
+
+```{r scorecard-all}
+knitr::kable(checks, row.names = FALSE)
+```
+
+```{r session}
+sessionInfo()
+```

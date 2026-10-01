@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use TSOpt, please cite it as below."
+title: "TSOpt: Training Set Optimisation for Genomic Prediction in Any Crop"
+type: software
+version: 0.5.0
+date-released: "2026-09-30"
+authors:
+  - family-names: Hussain
+    given-names: Waseem
+    email: waseemhussain@plantnura.com
+    affiliation: "PlantNura Consulting & Solutions"
+license: LicenseRef-TSOpt-Free-Licence
+keywords:
+  - genomic selection
+  - training population optimisation
+  - CDmean
+  - plant breeding
+  - sparse testing
+  - R
+abstract: >-
+  TSOpt chooses which genotyped candidates to phenotype so that genomic prediction works best. It computes
+  the CDmean criterion exactly by rank-one updates of the prediction error variance, is robust to the
+  unknown heritability, and covers inbred, hybrid, testcross, clonal and genebank material, several traits
+  and environments (sparse testing), major genes, historical data and plot costs. Free for everyone.

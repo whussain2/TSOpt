@@ -1,0 +1,147 @@
+# Renders the documents (guides, tutorial, walkthrough, reference manual), commits the
+# PDFs to this repository, builds the binary packages with those PDFs inside, and, when
+# the secret PUBLIC_REPO_TOKEN is set, copies the PDFs to the public repository and
+# replaces the files of the GitHub release there.
+#
+# Secrets used:
+#   TSOPT_LICENCE        a licence key: the documents run TSOpt's code while rendering
+#   PUBLIC_REPO_TOKEN    (optional) fine-grained token for whussain2/TSOpt, Contents: read/write
+#
+# Run it from Actions > release-docs > Run workflow. Inputs: the release tag to update.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag of the public release to update (leave empty to only build artifacts)
+        default: v0.5.0
+        required: false
+
+name: release-docs
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-22.04
+    env:
+      TSOPT_LICENCE: ${{ secrets.TSOPT_LICENCE }}
+      PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+      OSFONTDIR: /usr/share/fonts//
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-pandoc@v2
+      - uses: r-lib/actions/setup-tinytex@v2
+      - name: System libraries and fonts
+        run: sudo apt-get update -q && sudo apt-get install -y -q fonts-dejavu fonts-dejavu-extra libcurl4-openssl-dev libssl-dev libxml2-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"all"'
+          working-directory: TSOpt
+          extra-packages: any::rmarkdown, any::knitr, any::ragg, any::patchwork, any::ggrepel, any::writexl, any::jsonlite
+      - name: LaTeX packages the documents use
+        run: tlmgr install tcolorbox fancyhdr sectsty float booktabs longtable array titling fvextra xcolor pgf environ trimspaces etoolbox fontspec unicode-math lm-math filehook koma-script caption framed || true
+      - name: Install TSOpt
+        run: R CMD INSTALL TSOpt
+      - name: Check the licence is active
+        shell: Rscript {0}
+        run: |
+          library(TSOpt)
+          if (!TSOpt:::.lic_active()) stop("TSOPT_LICENCE is missing or not valid: add the secret in Settings > Secrets and variables > Actions")
+      - name: Render the guides
+        run: Rscript docs/guides/build_guides.R
+      - name: Render the tutorial
+        run: Rscript -e 'rmarkdown::render("docs/tutorial/TSOpt_Tutorial.Rmd")'
+      - name: Render the walkthrough
+        run: Rscript -e 'rmarkdown::render("docs/walkthrough/TSOpt_Walkthrough.Rmd")'
+      - name: Render the reference manual
+        run: R CMD Rd2pdf --no-preview --force --output=docs/TSOpt-manual.pdf TSOpt
+      - name: Commit the PDFs to this repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/guides/guide-*.pdf docs/tutorial/TSOpt_Tutorial.pdf docs/walkthrough/TSOpt_Walkthrough.pdf docs/TSOpt-manual.pdf
+          git commit -m "Documents rendered by release-docs (run ${{ github.run_number }})" || echo "nothing to commit"
+          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TSOpt-documents
+          path: |
+            docs/guides/guide-*.pdf
+            docs/tutorial/TSOpt_Tutorial.pdf
+            docs/walkthrough/TSOpt_Walkthrough.pdf
+            docs/TSOpt-manual.pdf
+      - name: Copy the PDFs to the public repository
+        if: env.PUBLIC_REPO_TOKEN != ''
+        run: |
+          git clone --depth 1 "https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/whussain2/TSOpt.git" public
+          cp docs/guides/guide-*.pdf public/docs/guides/
+          cp docs/tutorial/TSOpt_Tutorial.pdf public/docs/tutorial/
+          cp docs/TSOpt-manual.pdf public/docs/reference/TSOpt_Reference_Manual.pdf
+          cp docs/walkthrough/TSOpt_Walkthrough.pdf docs/walkthrough/TSOpt_Walkthrough.Rmd public/docs/walkthrough/
+          cd public
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs
+          git commit -m "Documents rebuilt from the package sources" || echo "nothing to commit"
+          git push
+
+  binaries:
+    needs: docs
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} (R ${{ matrix.r }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, macos-15-intel, ubuntu-22.04]
+        r: ['release']
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          working-directory: TSOpt
+      - name: Build the binary package
+        shell: bash
+        run: |
+          mkdir -p dist TSOpt/inst/pdf TSOpt/inst/walkthrough
+          cp docs/guides/guide-*.pdf docs/tutorial/TSOpt_Tutorial.pdf docs/TSOpt-manual.pdf docs/walkthrough/TSOpt_Walkthrough.pdf TSOpt/inst/pdf/
+          cp docs/walkthrough/TSOpt_Walkthrough.Rmd docs/walkthrough/walkthrough_style.tex TSOpt/inst/walkthrough/
+          R CMD build --no-build-vignettes --no-manual TSOpt
+          SRC=$(ls TSOpt_*.tar.gz)
+          R CMD INSTALL --build --library="$RUNNER_TEMP" "$SRC"
+          rm "$SRC"
+          for f in TSOpt_*.zip TSOpt_*_R_*.tar.gz; do [ -e "$f" ] && mv "$f" dist/; done
+          for f in TSOpt_*.tgz; do [ -e "$f" ] && mv "$f" "dist/${f%.tgz}_macos-$(uname -m).tgz"; done
+          ls -l dist
+      - name: Check that the binary loads and refuses to run without a key
+        shell: Rscript {0}
+        run: |
+          install.packages(list.files("dist", full.names = TRUE), repos = NULL, lib = Sys.getenv("RUNNER_TEMP"))
+          Sys.unsetenv("TSOPT_LICENCE")
+          library(TSOpt, lib.loc = Sys.getenv("RUNNER_TEMP"))
+          stopifnot(!TSOpt:::.lic_active())
+          stopifnot(inherits(try(tso_data(tso_simulate_panel(20, 50)), silent = TRUE), "try-error"))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TSOpt-binary-${{ matrix.os }}
+          path: dist/
+      - name: Replace the file on the public release
+        if: env.PUBLIC_REPO_TOKEN != '' && inputs.release_tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: gh release upload "${{ inputs.release_tag }}" dist/* --clobber --repo whussain2/TSOpt

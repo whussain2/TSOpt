@@ -206,8 +206,9 @@ flowchart TD
 On **six public panels** (maize, two rice panels, sorghum, switchgrass and white spruce, with real phenotypes,
 33 scenarios; TSOpt 0.5.0), TSOpt's default improved predictive ability over random sampling by **+0.066**, winning
 **88%** of scenarios. It was at least as accurate as STPGA and TSDFGS (+0.020 and +0.024 on average) and about
-**1,000 to 4,000 times faster** (0.03 s instead of 40 to 120 s). Choosing the lines "most related to the targets",
-a common rule of thumb, *lowered* accuracy.
+**1,000 to 4,000 times faster** (0.03 s instead of 40 to 120 s). Against the training sets that TrainSel's own authors published for the same panels, on identical splits, TSOpt was
+slightly more accurate on average (+0.005; ahead in 161 of 240 splits), mostly when the training set is small.
+Choosing the lines "most related to the targets", a common rule of thumb, *lowered* accuracy.
 
 <div align="center">
 <img src="assets/benchmark_gain.png" alt="Benchmark: gain in predictive ability over random" width="48%"/>

@@ -89,7 +89,7 @@ summary: `results/trainsel_published_summary.csv`.
 
 The targeted difference comes mainly from the smallest training sets (+0.013 at 10% of the candidates, +0.001 at
 60–80%). By panel it was +0.014 (switchgrass), +0.009 (rice diversity panel), +0.007 (maize), +0.004 (spruce),
-−0.002 (sorghum) and −0.004 (rice). NDCG@10%: +0.002 (targeted, n.s.) and +0.010 (untargeted). TSOpt's median
+−0.002 (sorghum) and −0.003 (rice). NDCG@10%: +0.002 (targeted, n.s.) and +0.010 (untargeted). TSOpt's median
 time per design was 0.09 s (3 s on spruce at up to 1,170 lines). **Reading:** as accurate as TrainSel run by its
 own developers, slightly better on average, mostly when the training set is small.
 

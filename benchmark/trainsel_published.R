@@ -31,7 +31,9 @@
 # Writes benchmark/results/trainsel_published_<dataset>.csv and trainsel_published_summary.csv
 # =============================================================================
 suppressMessages(library(TSOpt))
-data_dir <- Sys.getenv("TSO_BENCH_DATA", "reference_packages/Fernandez-Gonzalez_2022_Comparison/Datasets")
+data_dir <- Sys.getenv("TSO_BENCH_DATA")   # the six panels of Fernandez-Gonzalez et al. (not redistributed here)
+if (!("--summary" %in% commandArgs(TRUE)) && !dir.exists(data_dir))
+  stop("set TSO_BENCH_DATA to the folder with the six panels (Fernandez-Gonzalez et al. 2023, Datasets/)")
 ext_dir <- Sys.getenv("TSO_TRAINSEL_SETS", "benchmark/external/fernandez2023")
 out_dir <- Sys.getenv("TSO_BENCH_OUT", "benchmark/results")
 reps_max <- as.integer(Sys.getenv("TSO_BENCH_REPS", "40"))

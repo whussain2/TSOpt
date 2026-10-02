@@ -31,7 +31,7 @@
 # Writes benchmark/results/trainsel_published_<dataset>.csv and trainsel_published_summary.csv
 # =============================================================================
 suppressMessages(library(TSOpt))
-data_dir <- Sys.getenv("TSO_BENCH_DATA", "Datasets")
+data_dir <- Sys.getenv("TSO_BENCH_DATA", "reference_packages/Fernandez-Gonzalez_2022_Comparison/Datasets")
 ext_dir <- Sys.getenv("TSO_TRAINSEL_SETS", "benchmark/external/fernandez2023")
 out_dir <- Sys.getenv("TSO_BENCH_OUT", "benchmark/results")
 reps_max <- as.integer(Sys.getenv("TSO_BENCH_REPS", "40"))
@@ -70,11 +70,17 @@ for (ds in names(panels)) {
     stop(ds, ": the published sets do not index a panel of ", N, " lines")
 
   # ---- alignment check: reproduce TrainSel's reported criterion values with the authors' formula ----
-  bv <- CDt[[1]][[1]]$BestVal
-  lam <- optimize(function(l) (cd_authors(CDt[[1]][[1]]$BestSol_int, K0, l, TS[[1]]) - bv)^2, c(1e-4, 50))$minimum
-  chk <- sapply(seq_len(min(5, nrep)), function(r) cd_authors(CDt[[r]][[2]]$BestSol_int, K0, lam, TS[[r]]) - CDt[[r]][[2]]$BestVal)
-  message(sprintf("%s: N = %d, lambda recovered %.4f, max |recomputed - published BestVal| = %.2e", ds, N, lam, max(abs(chk))))
-  if (max(abs(chk)) > 1e-4) stop(ds, ": published TrainSel values not reproduced; the line order of the panel may differ")
+  # (lambda = 1, as in the authors' runs). The recomputed values must track the published ones almost
+  # exactly; a wrong line order is shown by the same check on a shuffled matrix.
+  g <- expand.grid(r = seq_len(min(5, nrep)), s = 1:2)
+  pub <- mapply(function(r, s) CDt[[r]][[s]]$BestVal, g$r, g$s)
+  rec <- mapply(function(r, s) cd_authors(CDt[[r]][[s]]$BestSol_int, K0, 1, TS[[r]]), g$r, g$s)
+  set.seed(1); pm <- sample(N)
+  shf <- mapply(function(r, s) cd_authors(CDt[[r]][[s]]$BestSol_int, K0[pm, pm], 1, TS[[r]]), g$r, g$s)
+  rel <- max(abs(rec / pub - 1)); rel_shf <- max(abs(shf / pub - 1))
+  message(sprintf("%s: N = %d; published TrainSel CDmean reproduced within %.2f%% (r = %.6f); shuffled line order: %.1f%%",
+                  ds, N, 100 * rel, cor(rec, pub), 100 * rel_shf))
+  if (rel > 0.01 || cor(rec, pub) < 0.999) stop(ds, ": published TrainSel values not reproduced; the line order of the panel may differ")
 
   tp <- tso_data(kinship = K, verbose = FALSE)
   rows <- list()

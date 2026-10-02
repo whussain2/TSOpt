@@ -16,6 +16,8 @@ The head-to-head rows come from the run with TSOpt 0.5.0 (33 scenarios on six pa
 | ... at least as well as STPGA, about 4,000 times faster | same | +0.020 ± 0.010; wins 58% (sign test n.s.); 0.03 s vs 120 s | 33 pairs | same |
 | ... at least as well as TSDFGS r-score, about 1,300 times faster | same | +0.024 ± 0.008; wins 64% (n.s.); 0.03 s vs 40 s | 33 pairs | same |
 | ... and slightly better than a TrainSel-style GA + SA (our implementation, not TrainSel's code) | same | +0.006 ± 0.005; wins 70% | 33 pairs | same |
+| ... and slightly better than TrainSel's own published designs (CDmean, targeted), on identical splits | Real: 6 public panels, TrainSel sets published by its authors (Fernández-González et al. 2023) | +0.005 ± 0.001; ahead in 161 of 240 splits (p < 0.001); mainly at small sizes; TrainSel ahead on rice and sorghum | 1,200 pairs | [benchmark/README.md](../benchmark/README.md) |
+| ... untargeted designs | same | +0.019 ± 0.002; ahead in 188 of 240 splits | 1,200 pairs | same |
 | Hedging over heritability beats one assumed h2 | same | +0.009 ± 0.006 over h2 = 0.5; wins 70%, sign test p = 0.04 | 33 pairs | same; probe of fixed h2 0.1-0.8 (earlier version) in `results/h2probe_*.csv` |
 | "Most related to the target" is harmful | same | PA -0.114 vs random; beats random 27% | 33 scenarios | same |
 | Forward in time: choosing this cycle's plots | Simulated programme histories (40 x 6 cycles, h2 0.3 and 0.6) | PA +0.009 over random (SE 0.003, t = 3.1); wins 61% | 200 cycle tests | `benchmark/forward_benchmark.R` |
@@ -54,9 +56,9 @@ see [REPRODUCIBILITY.md](REPRODUCIBILITY.md)) and by the base-R scripts in the p
   results from real programmes are the next step.
 * **Elite breeding populations.** The public panels are diversity panels; biparental
   and multi-parent breeding populations may behave differently.
-* **An independent head-to-head with TrainSel's own code.** Its licence forbids use by
-  for-profit organisations; the protocol for a comparison by an academic partner is in
-  [benchmark/TRAINSEL_PROTOCOL.md](../benchmark/TRAINSEL_PROTOCOL.md).
+* **TrainSel's code run independently, on breeding data.** TrainSel's own published designs are compared on
+  the public panels (above); a run of its code by a licensed academic partner, also on breeding data, is
+  pre-specified in [benchmark/TRAINSEL_PROTOCOL.md](../benchmark/TRAINSEL_PROTOCOL.md).
 * **Real omics data.** The omics results use simulated profiles.
 * **Real multi-environment and multi-trait benchmarks.** These designs are exact under their
   model, but their realised gains have been shown on simulations only.

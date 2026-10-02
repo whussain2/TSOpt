@@ -10,7 +10,8 @@ This folder holds the scripts and every raw result behind TSOpt's published clai
 | `results/benchmark_*.csv`, `results/fig_*.png` | The summaries and figures made from them |
 | [KERNELS.md](KERNELS.md), [HAPLOTYPES.md](HAPLOTYPES.md), [OMICS.md](OMICS.md) | Benchmarks of the non-additive, haplotype and omics models |
 | `forward_benchmark.R`, `major_genes_benchmark.R`, `limits.R` | Forward validation, major-gene protection, size/time/memory limits ([LIMITS.md](../docs/LIMITS.md)) |
-| [TRAINSEL_PROTOCOL.md](TRAINSEL_PROTOCOL.md), `trainsel_comparison.R` | The pre-specified comparison with TrainSel, to be run by an academic partner |
+| `trainsel_published.R` | TSOpt against TrainSel's own published training sets, on identical splits |
+| [TRAINSEL_PROTOCOL.md](TRAINSEL_PROTOCOL.md), `trainsel_comparison.R` | The pre-specified comparison with TrainSel's code, to be run by an academic partner |
 
 All claims, with their data, effect sizes and number of runs, are collected in
 [docs/EVIDENCE.md](../docs/EVIDENCE.md).
@@ -24,7 +25,7 @@ All claims, with their data, effect sizes and number of runs, are collected in
 | Budget | n = 15% of the candidates. |
 | Score | Every training set is scored in the same way: realised predictive ability (PA), the correlation of GBLUP predictions (REML heritability) with the phenotypes of the targets, averaged over traits. Also NDCG@10%, exact CDmean at h2 = 0.5, and wall-clock time on one core. |
 | Methods | The TSOpt default (`tso_design()` with nothing changed) and variants; **STPGA** 5.2.1 (genetic algorithm, CDMEAN); **TSDFGS** 2.0 (CD and r-score exchange); a genetic algorithm + simulated annealing from random starts on exact CDmean, in the style of TrainSel; baselines: random (5 draws), stratified random, PAM medoids, most related to the targets. |
-| TrainSel | Not run. Its licence forbids use by for-profit organisations. The GA + SA reproduces its search strategy on the same exact criterion, without its code. A comparison with TrainSel itself is pre-specified in [TRAINSEL_PROTOCOL.md](TRAINSEL_PROTOCOL.md). |
+| TrainSel | Not run (its licence forbids use by for-profit organisations). The GA + SA reproduces its search strategy on the same exact criterion, without its code. TrainSel's own published designs are compared in the next section. |
 
 ## Results (TSOpt 0.5.0; 33 scenarios, 6 panels)
 
@@ -63,6 +64,34 @@ Times were measured with eight benchmark processes running at once, one core eac
 
 ![PA gain](results/fig_pa_gain.png)
 ![Accuracy against time](results/fig_time_vs_gain.png)
+
+## TSOpt against TrainSel's own published training sets
+
+TrainSel is not run here (its licence forbids use by for-profit organisations). Instead,
+`trainsel_published.R` uses the training sets that TrainSel's authors optimised with it on the same six panels
+and published with their comparison (Fernández-González, Akdemir & Isidro y Sánchez 2023, *Theor Appl Genet*
+136:30; github.com/TheRocinante-lab/Publications): 40 splits of each panel into candidates (85%) and test lines
+(15%), and TrainSel's targeted and untargeted CDmean sets at five sizes (10, 20, 40, 60 and 80% of the
+candidates), with their random sets. On each split and size, TSOpt chose a set of the same size from the same
+candidates with its defaults, and every set was scored on the test lines with the same GBLUP.
+
+The script first recomputes the authors' criterion for their published sets with their code and requires it to
+reproduce TrainSel's reported values: within 0.01% on five panels and 0.4% on spruce (whose matrix differs
+slightly in scale), against about 16% for a shuffled line order. Raw rows: `results/trainsel_published_<panel>.csv`;
+summary: `results/trainsel_published_summary.csv`.
+
+| Comparison (6 panels × 40 splits × 5 sizes) | PA difference ± SE | Comparisons won | Splits ahead (of 240) | Sign test p |
+|---|---|---|---|---|
+| TSOpt targeted − TrainSel CDmean targeted | +0.005 ± 0.001 | 58% | 161 | < 0.001 |
+| TSOpt untargeted − TrainSel CDmean untargeted | +0.019 ± 0.002 | 67% | 188 | < 0.001 |
+| TSOpt targeted − random (published) | +0.048 ± 0.003 | 81% | 213 | < 0.001 |
+| TrainSel targeted − random (published) | +0.043 ± 0.003 | 76% | 207 | < 0.001 |
+
+The targeted difference comes mainly from the smallest training sets (+0.013 at 10% of the candidates, +0.001 at
+60–80%). By panel it was +0.014 (switchgrass), +0.009 (rice diversity panel), +0.007 (maize), +0.004 (spruce),
+−0.002 (sorghum) and −0.004 (rice). NDCG@10%: +0.002 (targeted, n.s.) and +0.010 (untargeted). TSOpt's median
+time per design was 0.09 s (3 s on spruce at up to 1,170 lines). **Reading:** as accurate as TrainSel run by its
+own developers, slightly better on average, mostly when the training set is small.
 
 ## What the results show
 

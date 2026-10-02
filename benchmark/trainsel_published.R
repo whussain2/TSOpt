@@ -39,7 +39,8 @@ reps_max <- as.integer(Sys.getenv("TSO_BENCH_REPS", "40"))
 panels <- c(Maize = "Maize", Rice = "Rice", RicePS = "Rice_high_PS", Sorghum = "Sorghum",
             Switchgrass = "Switchgrass", Spruce = "Spruce")
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args)) panels <- panels[args]
+summary_only <- "--summary" %in% args; args <- setdiff(args, "--summary")
+if (summary_only) panels <- panels[0] else if (length(args)) panels <- panels[args]
 
 ndcg_at <- function(pred, obs, top = 0.1) {
   k <- max(1, ceiling(top * length(obs))); g <- obs - min(obs)
@@ -121,7 +122,9 @@ for (ds in names(panels)) {
 }
 
 # ---- summary: paired differences within dataset x repetition x size; SE over repetitions -------------
-d <- do.call(rbind, lapply(list.files(out_dir, "^trainsel_published_(?!summary).*csv$", full.names = TRUE, perl = TRUE), read.csv))
+fs <- list.files(out_dir, "^trainsel_published_.*\\.csv$", full.names = TRUE)
+fs <- fs[!grepl("_(summary|by_dataset)\\.csv$", fs)]
+d <- do.call(rbind, lapply(fs, read.csv))
 pair <- function(m1, m2, col) {
   a <- d[d$method == m1, c("dataset", "rep", "size", col)]; b <- d[d$method == m2, c("dataset", "rep", "size", col)]
   x <- merge(a, b, by = c("dataset", "rep", "size")); x$diff <- x[[paste0(col, ".x")]] - x[[paste0(col, ".y")]]
